@@ -13,8 +13,9 @@ from .help import help_command
 from .trending import trending_command
 from .profile import profile_command
 
-# import profile
-from profile.handler import profile_handler
+# Import handlers
+from profile.handler import ProfileHandler
+from features.repository import repository_handler
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class CommandRouter:
         self.about = about_handler
         self.developer = developer_handler
         self.trending = trending_handler
-        self.profile = profile_handler
+        self.profile = ProfileHandler()  # Initialize profile handler directly
 
     # Command handlers
     async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -48,6 +49,7 @@ class CommandRouter:
         """Route callback queries to appropriate handlers"""
         query = update.callback_query
         action = query.data
+        logger.debug(f"DEBUG: handle_callback_query - Received action: {action}")
 
         try:
             # Basic navigation
@@ -101,12 +103,22 @@ class CommandRouter:
                     logger.warning(f"Malformed trending callback: {action}")
                     await query.answer("❌ Invalid action")
 
+            # Handle profile-related actions with better error tracking
             elif (
                 action.startswith("user_")
                 or action.startswith("refresh_user_")
                 or action == "back_to_profile"
+                or action.startswith("show_avatar_")
             ):
-                await self.profile.handle_profile_callback(update, context, action)
+                logger.info(f"Routing profile action: {action}")
+                logger.debug(f"DEBUG: handle_callback_query - Routing to profile handler for action: {action}")
+                try:
+                    await self.profile.handle_profile_callback(update, context, action)
+                except Exception as e:
+                    logger.error(
+                        f"Profile callback error for action '{action}': {str(e)}"
+                    )
+                    await query.answer("❌ Could not process profile action")
 
             # Repository actions (when accessed from user profile)
             elif action.startswith("repo_"):
@@ -114,7 +126,7 @@ class CommandRouter:
 
             else:
                 logger.warning(f"Unknown callback action: {action}")
-                await query.answer("❌ Unknown action")
+                await query.answer("❌ Invalid action")
 
         except Exception as e:
             logger.error(f"Error handling callback {action}: {str(e)}")

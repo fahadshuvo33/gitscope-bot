@@ -37,9 +37,9 @@ def setup_logging():
             else:
                 return f"ℹ️  {record.getMessage()}"
 
-    # Configure root logger
+    # Setup root logger to catch all messages, but only output WARNING and above
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.WARNING)
+    root_logger.setLevel(logging.DEBUG)
 
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -48,7 +48,7 @@ def setup_logging():
 
     # Your bot logger
     bot_logger = logging.getLogger(__name__)
-    bot_logger.setLevel(logging.INFO)
+    bot_logger.setLevel(logging.DEBUG)
     bot_logger.addHandler(console_handler)
     bot_logger.propagate = False
 
@@ -224,6 +224,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             action.startswith("user_")
             or action.startswith("refresh_user_")
             or action == "back_to_profile"
+            or action.startswith("show_avatar_")
         ):
             await command_router.handle_callback_query(update, context)
             return

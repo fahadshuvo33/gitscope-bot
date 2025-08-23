@@ -229,9 +229,16 @@ async def show_static_loading(
     )
 
 async def show_error(
-    message, title, error_type="Error", details=None, preserve_content=False
+    message,
+    title,
+    error_type="Network Error",
+    details=None,
+    preserve_content=False,
 ):
     """Show balanced error message"""
-    return await loading_animation.show_error(
-        message, title, error_type, details, preserve_content
-    )
+
+    # Always create new error content, don't preserve loading state
+    error_text = f"{title}\n\n"
+    error_text += f"❌❌ {error_type} - Please try again ❌❌"
+
+    return error_text

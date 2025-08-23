@@ -4,7 +4,7 @@ import logging
 import asyncio
 
 # Import the loading system
-from utils.loading import show_loading, show_error
+from utils.loading import show_loading, show_error, show_static_loading
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +18,23 @@ class ProfileSocial:
         """Show user's followers with smooth loading animation"""
         per_page = 15
 
-        # Start loading animation
+        # Show static loading first to preserve the window
+        await show_static_loading(
+            message,
+            f"👥 **{username}'s Followers**",
+            "Loading",
+            page,
+            preserve_content=True,
+            animation_type=self.FOLLOWERS_ANIMATION,
+        )
+
+        # Start animated loading animation
         loading_task = await show_loading(
             message,
             f"👥 **{username}'s Followers**",
             "Loading",
             page,
-            animation_type=self.FOLLOWERS_ANIMATION,  # Component controls animation
+            animation_type=self.FOLLOWERS_ANIMATION,
         )
 
         try:
@@ -33,9 +43,13 @@ class ProfileSocial:
                 username, "followers", page, per_page
             )
 
-            # Stop loading animation
+            # Stop loading animation gracefully
             if loading_task and not loading_task.done():
                 loading_task.cancel()
+                try:
+                    await loading_task
+                except asyncio.CancelledError:
+                    pass
 
             if followers_data is None:
                 await self._show_network_error_inline(
@@ -83,18 +97,27 @@ class ProfileSocial:
                 username, "followers", page, total_pages
             )
 
-            # Update with final content
-            await message.edit_text(
-                text,
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                disable_web_page_preview=True,
-            )
+            # Update with final content while preserving the window
+            try:
+                await message.edit_text(
+                    text,
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    disable_web_page_preview=True,
+                )
+            except Exception as edit_error:
+                logger.warning(f"Failed to edit message: {edit_error}")
+                # Fallback: try to send the content anyway
+                pass
 
         except Exception as e:
-            # Stop loading animation
+            # Stop loading animation gracefully
             if loading_task and not loading_task.done():
                 loading_task.cancel()
+                try:
+                    await loading_task
+                except asyncio.CancelledError:
+                    pass
 
             logger.error(
                 f"Error in show_followers for {username} page {page}: {e}",
@@ -106,23 +129,38 @@ class ProfileSocial:
         """Show users that the user is following with smooth loading"""
         per_page = 15
 
-        # Start loading animation
+        # Show static loading first to preserve the window
+        await show_static_loading(
+            message,
+            f"👤 **Users {username} is Following**",
+            "Loading",
+            page,
+            preserve_content=True,
+            animation_type=self.FOLLOWING_ANIMATION,
+        )
+
+        # Start animated loading animation
         loading_task = await show_loading(
             message,
             f"👤 **Users {username} is Following**",
             "Loading",
             page,
-            animation_type=self.FOLLOWING_ANIMATION,  # Different animation
+            animation_type=self.FOLLOWING_ANIMATION,
         )
+
         try:
             # Fetch data
             following_data = await self._fetch_with_retry(
                 username, "following", page, per_page
             )
 
-            # Stop loading animation
+            # Stop loading animation gracefully
             if loading_task and not loading_task.done():
                 loading_task.cancel()
+                try:
+                    await loading_task
+                except asyncio.CancelledError:
+                    pass
 
             if following_data is None:
                 await self._show_network_error_inline(
@@ -170,17 +208,27 @@ class ProfileSocial:
                 username, "following", page, total_pages
             )
 
-            await message.edit_text(
-                text,
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                disable_web_page_preview=True,
-            )
+            # Update with final content while preserving the window
+            try:
+                await message.edit_text(
+                    text,
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    disable_web_page_preview=True,
+                )
+            except Exception as edit_error:
+                logger.warning(f"Failed to edit message: {edit_error}")
+                # Fallback: try to send the content anyway
+                pass
 
         except Exception as e:
-            # Stop loading animation
+            # Stop loading animation gracefully
             if loading_task and not loading_task.done():
                 loading_task.cancel()
+                try:
+                    await loading_task
+                except asyncio.CancelledError:
+                    pass
 
             logger.error(
                 f"Error in show_following for {username} page {page}: {e}",
@@ -218,11 +266,14 @@ class ProfileSocial:
             ],
         ]
 
-        await message.edit_text(
-            error_text,
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-        )
+        try:
+            await message.edit_text(
+                error_text,
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to show error message: {e}")
 
     # Keep all your existing helper methods (_fetch_with_retry, _create_pagination_keyboard, etc.)
     # ... rest of your existing methods remain the same
@@ -388,6 +439,9 @@ class ProfileSocial:
                 ],
             )
 
-        await message.edit_text(
-            text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        try:
+            await message.edit_text(
+                text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to show empty result: {e}")
