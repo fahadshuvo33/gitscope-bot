@@ -6,13 +6,15 @@ import logging
 from features.about import about_handler
 from features.developer import developer_handler
 from features.trending_repos import trending_handler
-from features.user_profile import user_profile_handler
 
 # Import commands
 from .start import start_command
 from .help import help_command
 from .trending import trending_command
 from .profile import profile_command
+
+# import profile
+from profile.handler import profile_handler
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ class CommandRouter:
         self.about = about_handler
         self.developer = developer_handler
         self.trending = trending_handler
-        self.user_profile = user_profile_handler
+        self.profile = profile_handler
 
     # Command handlers
     async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -98,13 +100,13 @@ class CommandRouter:
                     # Fallback for malformed trending callbacks
                     logger.warning(f"Malformed trending callback: {action}")
                     await query.answer("❌ Invalid action")
-            # User profile actions
-            elif action.startswith("user_"):
-                await self.user_profile.handle_user_callback(update, context, action)
 
-            elif action.startswith("refresh_user_"):
-                username = action.replace("refresh_user_", "")
-                await self.user_profile.refresh_user_profile(update, context, username)
+            elif (
+                action.startswith("user_")
+                or action.startswith("refresh_user_")
+                or action == "back_to_profile"
+            ):
+                await self.profile.handle_profile_callback(update, context, action)
 
             # Repository actions (when accessed from user profile)
             elif action.startswith("repo_"):

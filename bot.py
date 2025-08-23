@@ -86,7 +86,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 repo = f"{parts[0]}/{parts[1]}"
                 logger.info(f"Repository requested from URL: {repo}")
                 loading_msg = await update.message.reply_text(
-                    "🔄 *Loading\\.\\.\\.*", parse_mode="MarkdownV2"
+                    "🔄 Loading...", parse_mode=None
                 )
                 await repository_handler.show_repository_info(
                     loading_msg, repo, context
@@ -95,28 +95,101 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.warning(f"Failed to parse GitHub URL: {text}")
 
-    # Handle direct repo names
+    # Handle direct repo names (owner/repo)
     if "/" in text and len(text.split("/")) == 2:
         logger.info(f"Repository requested: {text}")
-        loading_msg = await update.message.reply_text(
-            "🔄 *Loading\\.\\.\\.*", parse_mode="MarkdownV2"
-        )
+        loading_msg = await update.message.reply_text("🔄 Loading...", parse_mode=None)
         await repository_handler.show_repository_info(loading_msg, text, context)
         return
+
+    # NEW: Better single word username validation
+    if (
+        " " not in text
+        and len(text) > 0
+        and not text.startswith("/")
+        and
+        # More strict validation
+        3 <= len(text) <= 39  # GitHub username length limits
+        and text.replace("-", "")
+        .replace("_", "")
+        .replace(".", "")
+        .isalnum()  # Allow dots too
+        and not text.isdigit()  # Don't treat pure numbers as usernames
+        and not text.upper()
+        == text  # Don't treat ALL CAPS as usernames (likely not usernames)
+        and text.lower() != text.upper()
+    ):  # Must have letters, not just symbols
+
+        logger.info(f"Single word username requested: {text}")
+
+        # Add a quick validation before processing
+        if await is_likely_username(text):
+            from profile.handler import profile_handler
+
+            await profile_handler.show_profile(update, context, text)
+            return
 
     # Help message for unknown input
     await update.message.reply_text(
         "🤔 I can help you with:\n\n"
-        "📂 *Repository:* `owner/repository`\n"
-        "👤 *User profile:* `@username`\n"
-        "🔗 *GitHub URL:* Just paste it\\!\n\n"
-        "💡 *Commands:*\n"
-        "• `/help` \\- Detailed help\n"
-        "• `/trending` \\- Trending repos\n"
-        "• `/user username` \\- User profile\n\n"
-        "Try sending `facebook/react` or `@octocat`\\!",
-        parse_mode="MarkdownV2",
+        "📂 **Repository:** `owner/repository`\n"
+        "👤 **User profile:** `username` or `@username`\n"
+        "🔗 **GitHub URL:** Just paste it!\n\n"
+        "💡 **Commands:**\n"
+        "• `/help` - Detailed help\n"
+        "• `/trending` - Trending repos\n"
+        "• `/user username` - User profile\n\n"
+        "Try sending:\n"
+        "• `facebook/react` (repository)\n"
+        "• `octocat` (username)\n"
+        "• `@octocat` (username with @)",
+        parse_mode="Markdown",
     )
+
+
+async def is_likely_username(text):
+    """Quick check if text is likely a GitHub username"""
+    # Common non-username patterns to avoid
+    non_username_patterns = [
+        # Common words that aren't usernames
+        "hello",
+        "hi",
+        "test",
+        "help",
+        "thanks",
+        "ok",
+        "yes",
+        "no",
+        # Technical terms
+        "api",
+        "url",
+        "http",
+        "https",
+        "www",
+        "com",
+        "org",
+        # Common exclamations
+        "wow",
+        "cool",
+        "nice",
+        "good",
+        "bad",
+        "error",
+    ]
+
+    # If it's a common word, probably not a username
+    if text.lower() in non_username_patterns:
+        return False
+
+    # If it has multiple consecutive dots/hyphens, probably not a username
+    if ".." in text or "--" in text or "__" in text:
+        return False
+
+    # If it starts/ends with special chars, probably not a username
+    if text.startswith(("-", "_", ".")) or text.endswith(("-", "_", ".")):
+        return False
+
+    return True
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -147,16 +220,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # User profile callbacks
-        if action.startswith("user_") or action.startswith("refresh_user_"):
-            from features.user_profile import user_profile_handler
-
-            if action.startswith("refresh_user_"):
-                username = action.replace("refresh_user_", "")
-                await user_profile_handler.refresh_user_profile(
-                    update, context, username
-                )
-            else:
-                await user_profile_handler.handle_user_callback(update, context, action)
+        if (
+            action.startswith("user_")
+            or action.startswith("refresh_user_")
+            or action == "back_to_profile"
+        ):
+            await command_router.handle_callback_query(update, context)
             return
 
         # Repository callbacks
