@@ -43,16 +43,16 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Import and use the profile handler
         from profile.handler import profile_handler
 
-        # Create a mock update object for the profile handler
-        class MockUpdate:
-            def __init__(self, message):
-                self.message = message
-                self.callback_query = None
+                # Create a mock update object for the profile handler
+                class MockUpdate:
+                    def __init__(self, message):
+                        self.message = message
+                        self.callback_query = None
 
-        mock_update = MockUpdate(loading_msg)
+                mock_update = MockUpdate(loading_msg)
 
-        # Show the profile using the handler's robust system
-        await profile_handler.show_profile(mock_update, context, username)
+                # Show the profile using the handler's robust system
+                await profile_handler.show_profile(mock_update, context, username)
 
     except ImportError as e:
         logger.error(f"Profile handler import error: {type(e).__name__}")
@@ -124,6 +124,8 @@ def _validate_github_username(username):
     # Additional checks for common issues
     reserved_names = ['admin', 'root', 'api', 'www', 'github', 'support', 'help', 'about', 'blog', 'api', 'status']
     if username.lower() in reserved_names:
+    reserved_names = ['admin', 'root', 'api', 'www', 'github', 'support', 'help', 'about', 'blog', 'api', 'status']
+    if username.lower() in reserved_names:
         return {"valid": False, "error": "reserved"}
 
     return {"valid": True, "error": None}
@@ -165,8 +167,13 @@ async def _show_validation_error(message, username, error_type):
         "double_hyphen": f"Username '{display_username}' cannot contain consecutive hyphens",
         "invalid_chars": f"Username '{display_username}' contains invalid characters",
         "reserved": f"Username '{display_username}' appears to be reserved"
+        "hyphen_edges": f"Username '{display_username}' cannot start or end with a hyphen",
+        "double_hyphen": f"Username '{display_username}' cannot contain consecutive hyphens",
+        "invalid_chars": f"Username '{display_username}' contains invalid characters",
+        "reserved": f"Username '{display_username}' appears to be reserved"
     }
 
+    specific_error = error_messages.get(error_type, f"Username '{display_username}' is invalid")
     specific_error = error_messages.get(error_type, f"Username '{display_username}' is invalid")
 
     error_text = (
@@ -180,6 +187,10 @@ async def _show_validation_error(message, username, error_type):
         "• `/user octocat`\n"
         "• `/user torvalds`\n"
         "• Just send `@username`"
+        "**Valid Examples:**\n"
+        "• `/user octocat`\n"
+        "• `/user torvalds`\n"
+        "• Just send `@username`"
     )
 
     try:
@@ -187,6 +198,7 @@ async def _show_validation_error(message, username, error_type):
     except Exception as e:
         logger.warning(f"Validation error display failed: {type(e).__name__}")
         # Fallback to simple message
+        await message.reply_text("❌ Invalid username. Please check and try again.")
         await message.reply_text("❌ Invalid username. Please check and try again.")
 
 
@@ -199,6 +211,7 @@ async def _show_system_error(message, username, error_type):
         error_text = await show_error(
             message,
             f"👤 **{escaped_username}'s Profile**",
+            f"👤 **{escaped_username}'s Profile**",
             error_type,
             preserve_content=True,
         )
@@ -207,10 +220,12 @@ async def _show_system_error(message, username, error_type):
         if error_type == "System Error":
             error_text = error_text.replace(
                 f"❌❌ {error_type} - Please try again ❌❌",
+                f"❌❌ {error_type} - Please try again ❌❌",
                 "⚙️ System temporarily unavailable"
             )
         elif error_type == "Unexpected Error":
             error_text = error_text.replace(
+                f"❌❌ {error_type} - Please try again ❌❌",
                 f"❌❌ {error_type} - Please try again ❌❌",
                 "🔄 Something unexpected happened"
             )
@@ -223,8 +238,11 @@ async def _show_system_error(message, username, error_type):
         try:
             await message.edit_text(
                 "❌ Error loading profile. Please try again later."
+                "❌ Error loading profile. Please try again later."
             )
         except Exception:
+            # Don't send another message, just log the error
+            logger.error(f"Failed to show error message: {e}")
             # Don't send another message, just log the error
             logger.error(f"Failed to show error message: {e}")
 
@@ -236,8 +254,10 @@ def get_command_help():
     return {
         "command": "/user",
         "aliases": ["/profile"],
+        "aliases": ["/profile"],
         "description": "Search and display GitHub user profiles",
         "usage": "/user <username>",
+        "examples": ["/user octocat", "/user torvalds", "@gaearon"]
         "examples": ["/user octocat", "/user torvalds", "@gaearon"]
     }
 

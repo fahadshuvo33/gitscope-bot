@@ -21,6 +21,7 @@ from features.trending_repos import trending_handler
 from admin import ADMIN_GITHUB_USERNAME
 from admin.admin_profile import show_admin_profile
 from admin.admin_repository import show_admin_repository
+
 # Import README handlers for pagination - REMOVED (not present in handlers/readme.py)
 # from handlers.readme import handle_readme_navigation, handle_readme_pages
 import aiohttp
@@ -98,7 +99,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "🔄 Loading...", parse_mode=None
                 )
                 if owner.lower() == ADMIN_GITHUB_USERNAME.lower():
-                    await show_admin_repository(update, context, repo_full_name, loading_msg)
+                    await show_admin_repository(
+                        update, context, repo_full_name, loading_msg
+                    )
                 else:
                     await repository_handler.show_repository_info(
                         loading_msg, repo_full_name, context
@@ -106,6 +109,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
         except Exception as e:
             logger.warning(f"Failed to parse GitHub URL: {text}")
+            # If parsing fails, it might fall through. Should it return? For now, let it fall.
 
     # Handle direct repo names (owner/repo)
     if "/" in text and len(text.split("/")) == 2:
@@ -116,7 +120,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if owner.lower() == ADMIN_GITHUB_USERNAME.lower():
             await show_admin_repository(update, context, repo_full_name, loading_msg)
         else:
-            await repository_handler.show_repository_info(loading_msg, repo_full_name, context)
+            await repository_handler.show_repository_info(
+                loading_msg, repo_full_name, context
+            )
         return
 
     # NEW: Better single word username validation
@@ -143,10 +149,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if await is_likely_username(text):
             username = text
             if username.lower() == ADMIN_GITHUB_USERNAME.lower():
-                from profile.handler import profile_handler # Import here to avoid circular dependency
+                from profile.handler import (
+                    profile_handler,
+                )  # Import here to avoid circular dependency
+
                 await show_admin_profile(update, context, username)
             else:
                 from profile.handler import profile_handler
+
                 await profile_handler.show_profile(update, context, username)
             return
 
@@ -280,6 +290,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await repository_handler.handle_callback(update, context, action)
             return
+
+        # If none of the above matched
 
         # If none of the above matched
         logger.warning(f"Unknown callback action: {action}")
