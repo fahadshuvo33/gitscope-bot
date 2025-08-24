@@ -295,19 +295,25 @@ class ProfileDisplay:
                     session, f"/repos/{username}/{username}/readme", timeout=4
                 )
 
-                if readme and readme.get('content'):
+                # If README exists and has content, extract info
+                if readme and isinstance(readme, dict) and readme.get('content'):
                     import base64
                     try:
                         content = base64.b64decode(readme['content']).decode('utf-8', errors='ignore')
                         info = self._extract_social_links(content)
-                    except Exception:
-                        pass
+                    except Exception as decode_error:
+                        # Log but don't raise - just return empty info
+                        logger.debug(f"README decode error for {username}: {type(decode_error).__name__}")
+                else:
+                    # No README found or invalid response - this is normal, not an error
+                    logger.debug(f"No README found for {username}")
 
         except Exception as e:
-            logger.warning(f"README fetch error: {type(e).__name__}")
+            # Any error in fetching README should not break profile display
+            logger.debug(f"README fetch error for {username}: {type(e).__name__}")
+            # Return default empty info - don't raise
 
         return info
-
     def _extract_social_links(self, content):
         """Extract social links from README content using simple string operations"""
         info = {'telegram': None, 'cv': None}

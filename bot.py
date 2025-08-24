@@ -223,6 +223,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if (
             action.startswith("user_")
             or action.startswith("refresh_user_")
+            or action.startswith("refresh_avatar_")
             or action == "back_to_profile"
             or action.startswith("show_avatar_")
         ):
