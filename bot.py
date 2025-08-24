@@ -18,6 +18,8 @@ import os
 from commands import command_router
 from features.repository import repository_handler
 from features.trending_repos import trending_handler
+# Import README handlers for pagination
+from handlers.readme import handle_readme_navigation, handle_readme_pages
 import aiohttp
 
 load_dotenv()
@@ -76,7 +78,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.args = [username]
         logger.info(f"User profile requested: @{username}")
         await command_router.handle_profile(update, context)
-        return
+        return # Add return here to prevent further processing
 
     # Handle GitHub URLs
     if "github.com" in text:
@@ -91,16 +93,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await repository_handler.show_repository_info(
                     loading_msg, repo, context
                 )
-                return
+                return # Add return here
         except Exception as e:
             logger.warning(f"Failed to parse GitHub URL: {text}")
+            # If parsing fails, it might fall through. Should it return? For now, let it fall.
 
     # Handle direct repo names (owner/repo)
     if "/" in text and len(text.split("/")) == 2:
         logger.info(f"Repository requested: {text}")
         loading_msg = await update.message.reply_text("🔄 Loading...", parse_mode=None)
         await repository_handler.show_repository_info(loading_msg, text, context)
-        return
+        return # Add return here
 
     # NEW: Better single word username validation
     if (
@@ -230,7 +233,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await command_router.handle_callback_query(update, context)
             return
 
-        # Repository callbacks
+        # README navigation callbacks
+        if action == "readme_next" or action == "readme_prev" or action.startswith("readme_page_"):
+            await handle_readme_navigation(update, context)
+            return
+
+        if action == "readme_pages":
+            await handle_readme_pages(update, context)
+            return
+
+        # Repository callbacks (including regular readme)
         repo_callbacks = [
             "contributors",
             "readme",
@@ -244,7 +256,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action in repo_callbacks:
             await repository_handler.handle_callback(update, context, action)
             return
-            # If none of the above matched
+
+        # If none of the above matched
         logger.warning(f"Unknown callback action: {action}")
         await query.answer("❌ Unknown action")
 
