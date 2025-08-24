@@ -141,6 +141,15 @@ async def _make_request_with_retry(
                 elif response.status == 401:
                     raise GitHubAPIError("Unauthorized access - check your GitHub token")
 
+                elif response.status == 400:
+                    try:
+                        error_json = await response.json()
+                        error_detail = f"Bad Request: {error_json}"
+                    except aiohttp.ContentTypeError:
+                        error_detail = f"Bad Request: {await response.text()}"
+                    logger.warning(f"GitHub API: {url} - {error_detail}")
+                    raise GitHubAPIError(error_detail)
+
                 elif response.status >= 500:
                     if attempt < max_retries - 1:
                         logger.warning(f"GitHub API: Server error {response.status}, retrying... (attempt {attempt + 1})")
@@ -253,6 +262,10 @@ async def fetch_open_prs(session: aiohttp.ClientSession, repo: str, limit: int =
     if not repo:
         return None
 
+    logger.debug(f"Fetching PRs for cleaned repo: {repo}")
+    api_path = f"/repos/{repo}/pulls"
+    logger.debug(f"Constructed PR API path: {api_path}")
+
     try:
         params = {
             "state": "open",
@@ -262,8 +275,17 @@ async def fetch_open_prs(session: aiohttp.ClientSession, repo: str, limit: int =
         }
         data = await _make_request_with_retry(session, f"/repos/{repo}/pulls", params=params, timeout=6)
         return data
-    except (NotFoundError, NetworkError, GitHubAPIError) as e:
-        logger.error(f"Failed to fetch open PRs for {repo}: {e}")
+    except NotFoundError as e:
+        logger.error(f"Failed to fetch open PRs for {repo}: Not Found - {e}")
+        return None
+    except NetworkError as e:
+        logger.error(f"Failed to fetch open PRs for {repo}: Network Error - {e}")
+        return None
+    except GitHubAPIError as e:
+        logger.error(f"Failed to fetch open PRs for {repo}: GitHub API Error - {e}")
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while fetching PRs for {repo}: {e}")
         return None
 
 async def fetch_open_issues(session: aiohttp.ClientSession, repo: str, limit: int = 10) -> Optional[List[Dict]]:

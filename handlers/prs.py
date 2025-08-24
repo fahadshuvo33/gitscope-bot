@@ -4,6 +4,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 from utils.git_api import fetch_open_prs
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Import the loading system
 from utils.loading import show_loading, show_static_loading
@@ -70,6 +73,7 @@ async def handle_prs(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
+        logger.error(f"‼️ Error in handle_prs for {repo}: {type(e).__name__} - {e}", exc_info=True)
         # Stop loading animation gracefully
         if loading_task and not loading_task.done():
             loading_task.cancel()
@@ -137,13 +141,16 @@ def _build_prs_content(prs, repo):
         if len(prs) > 5:
             text += f"📊 _{total_shown} of {len(prs)} total open pull requests shown_\n\n"
 
-        text += f"💡 **Tip:** Click on PR numbers to view them on GitHub!"
+        # ESCAPE THE EXCLAMATION MARK HERE!
+        text += f"💡 **Tip:** Click on PR numbers to view them on GitHub\\!"
 
     except Exception as e:
         # Fallback formatting if there's an error
         text += f"❌ _Error formatting pull requests data_\n\n"
         text += f"📊 _{len(prs)} open pull requests found_"
-
+        return text
+    
+    # Don't forget the return statement!
     return text
 
 
@@ -188,33 +195,37 @@ def _get_pr_status(pr):
         return ""
 
 
-async def _show_no_prs(message, repo, keyboard):
-    """Show message when no pull requests are found"""
-    repo_escaped = escape_markdown(repo, 2)
-    text = f"🔀 **{repo} Pull Requests**\n\n"
-    text += f"✅ **No Open Pull Requests**\n\n"
-    text += f"Great news! This repository has no open pull requests\\.\n\n"
-    text += f"**This could mean:**\n"
-    text += f"• All PRs are reviewed and merged quickly\n"
-    text += f"• Well\\-maintained project workflow\n"
-    text += f"• Active maintainer community\n"
-    text += f"• Stable development phase\n\n"
-    text += f"💡 **Tip:** This is usually a good sign for project health!"
+async def _show_prs_error(message, repo, error_type, keyboard):
+    """Show pull requests error with structured message"""
+    error_text = f"🔀 **{repo} Pull Requests**\n\n"
+    error_text += f"❌ **{error_type}**\n\n"
+
+    if error_type == "Fetch Error":
+        error_text += f"Unable to fetch pull requests information\\.\n\n"
+        error_text += f"**Possible causes:**\n"
+        error_text += f"• Network connection issue\n"
+        error_text += f"• GitHub API temporarily unavailable\n"
+        error_text += f"• Repository access restrictions\n"
+        error_text += f"• Rate limit exceeded\n\n"
+        error_text += f"💡 **Tip:** Try again in a few moments\\!"  # ESCAPE HERE
+    else:
+        error_text += f"An error occurred while loading pull requests\\.\n\n"
+        error_text += f"💡 **Tip:** Please try again\\!"  # AND HERE
 
     try:
         await message.edit_text(
-            text,
+            error_text,
             parse_mode="MarkdownV2",
             reply_markup=keyboard
         )
     except Exception:
-        # Fallback to simpler message
+        # Fallback to simple error message
         await message.edit_text(
-            f"✅ _No open pull requests in_ `{repo_escaped}`",
+            "❌ Error fetching pull requests\\. Please try again\\.",
             parse_mode="MarkdownV2",
             reply_markup=keyboard
         )
-
+        
 
 async def _show_prs_error(message, repo, error_type, keyboard):
     """Show pull requests error with structured message"""

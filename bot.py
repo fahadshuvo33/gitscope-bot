@@ -78,7 +78,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.args = [username]
         logger.info(f"User profile requested: @{username}")
         await command_router.handle_profile(update, context)
-        return
+        return # Add return here to prevent further processing
 
     # Handle GitHub URLs
     if "github.com" in text:
@@ -93,16 +93,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await repository_handler.show_repository_info(
                     loading_msg, repo, context
                 )
-                return
+                return # Add return here
         except Exception as e:
             logger.warning(f"Failed to parse GitHub URL: {text}")
+            # If parsing fails, it might fall through. Should it return? For now, let it fall.
 
     # Handle direct repo names (owner/repo)
     if "/" in text and len(text.split("/")) == 2:
         logger.info(f"Repository requested: {text}")
         loading_msg = await update.message.reply_text("🔄 Loading...", parse_mode=None)
         await repository_handler.show_repository_info(loading_msg, text, context)
-        return
+        return # Add return here
 
     # NEW: Better single word username validation
     if (
