@@ -18,6 +18,8 @@ import os
 from commands import command_router
 from features.repository import repository_handler
 from features.trending_repos import trending_handler
+# Import README handlers for pagination
+from handlers.readme import handle_readme_navigation, handle_readme_pages
 import aiohttp
 
 load_dotenv()
@@ -230,7 +232,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await command_router.handle_callback_query(update, context)
             return
 
-        # Repository callbacks
+        # README navigation callbacks
+        if action == "readme_next" or action == "readme_prev" or action.startswith("readme_page_"):
+            await handle_readme_navigation(update, context)
+            return
+
+        if action == "readme_pages":
+            await handle_readme_pages(update, context)
+            return
+
+        # Repository callbacks (including regular readme)
         repo_callbacks = [
             "contributors",
             "readme",
@@ -244,7 +255,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action in repo_callbacks:
             await repository_handler.handle_callback(update, context, action)
             return
-            # If none of the above matched
+
+        # If none of the above matched
         logger.warning(f"Unknown callback action: {action}")
         await query.answer("❌ Unknown action")
 
