@@ -18,6 +18,11 @@ import os
 from commands import command_router
 from features.repository import repository_handler
 from features.trending_repos import trending_handler
+from admin import ADMIN_GITHUB_USERNAME
+from admin.admin_profile import show_admin_profile
+from admin.admin_repository import show_admin_repository
+# Import README handlers for pagination - REMOVED (not present in handlers/readme.py)
+# from handlers.readme import handle_readme_navigation, handle_readme_pages
 import aiohttp
 
 load_dotenv()
@@ -75,7 +80,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = text[1:]
         context.args = [username]
         logger.info(f"User profile requested: @{username}")
-        await command_router.handle_profile(update, context)
+        if username.lower() == ADMIN_GITHUB_USERNAME.lower():
+            await show_admin_profile(update, context, username)
+        else:
+            await command_router.handle_profile(update, context)
         return
 
     # Handle GitHub URLs
@@ -83,23 +91,32 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             parts = text.split("github.com/")[-1].split("/")
             if len(parts) >= 2:
-                repo = f"{parts[0]}/{parts[1]}"
-                logger.info(f"Repository requested from URL: {repo}")
+                repo_full_name = f"{parts[0]}/{parts[1]}"
+                owner = parts[0]
+                logger.info(f"Repository requested from URL: {repo_full_name}")
                 loading_msg = await update.message.reply_text(
                     "🔄 Loading...", parse_mode=None
                 )
-                await repository_handler.show_repository_info(
-                    loading_msg, repo, context
-                )
+                if owner.lower() == ADMIN_GITHUB_USERNAME.lower():
+                    await show_admin_repository(update, context, repo_full_name, loading_msg)
+                else:
+                    await repository_handler.show_repository_info(
+                        loading_msg, repo_full_name, context
+                    )
                 return
         except Exception as e:
             logger.warning(f"Failed to parse GitHub URL: {text}")
 
     # Handle direct repo names (owner/repo)
     if "/" in text and len(text.split("/")) == 2:
-        logger.info(f"Repository requested: {text}")
+        repo_full_name = text
+        owner = text.split("/")[0]
+        logger.info(f"Repository requested: {repo_full_name}")
         loading_msg = await update.message.reply_text("🔄 Loading...", parse_mode=None)
-        await repository_handler.show_repository_info(loading_msg, text, context)
+        if owner.lower() == ADMIN_GITHUB_USERNAME.lower():
+            await show_admin_repository(update, context, repo_full_name, loading_msg)
+        else:
+            await repository_handler.show_repository_info(loading_msg, repo_full_name, context)
         return
 
     # NEW: Better single word username validation
@@ -124,9 +141,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Add a quick validation before processing
         if await is_likely_username(text):
-            from profile.handler import profile_handler
-
-            await profile_handler.show_profile(update, context, text)
+            username = text
+            if username.lower() == ADMIN_GITHUB_USERNAME.lower():
+                from profile.handler import profile_handler # Import here to avoid circular dependency
+                await show_admin_profile(update, context, username)
+            else:
+                from profile.handler import profile_handler
+                await profile_handler.show_profile(update, context, username)
             return
 
     # Help message for unknown input
@@ -230,7 +251,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await command_router.handle_callback_query(update, context)
             return
 
-        # Repository callbacks
+        # README navigation callbacks (Removed as they are not found in handlers/readme.py)
+        # if action == "readme_next" or action == "readme_prev" or action.startswith("readme_page_"):
+        #     handle_readme_navigation(update, context)
+        #     return
+
+        # if action == "readme_pages":
+        #     handle_readme_pages(update, context)
+        #     return
+
+        # Repository callbacks (including regular readme)
         repo_callbacks = [
             "contributors",
             "readme",
@@ -242,9 +272,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
         if action in repo_callbacks:
-            await repository_handler.handle_callback(update, context, action)
+            repo = context.user_data.get("current_repo")
+            if repo and repo.split("/")[0].lower() == ADMIN_GITHUB_USERNAME.lower():
+                # For now, special handling for admin repo callbacks might just call the generic ones
+                # but this is where you'd add custom logic if needed.
+                await repository_handler.handle_callback(update, context, action)
+            else:
+                await repository_handler.handle_callback(update, context, action)
             return
-            # If none of the above matched
+
+        # If none of the above matched
         logger.warning(f"Unknown callback action: {action}")
         await query.answer("❌ Unknown action")
 

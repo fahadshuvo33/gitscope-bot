@@ -6,7 +6,7 @@ import asyncio
 
 class RepositoryHandler:
 
-    async def show_repository_info(self, message_or_query, repo_name, context):
+    async def show_repository_info(self, message_or_query, repo_name, context, is_admin_repo: bool = False):
         """Show repository information"""
         # Store current repo in user data
         context.user_data["current_repo"] = repo_name
@@ -32,7 +32,7 @@ class RepositoryHandler:
                 return
 
             # Format and send repository information
-            repo_info = format_repo_info(repo_data)
+            repo_info = format_repo_info(repo_data, is_admin_repo=is_admin_repo)
             keyboard = self.create_repo_keyboard()
 
             if hasattr(message_or_query, 'edit_message_text'):
