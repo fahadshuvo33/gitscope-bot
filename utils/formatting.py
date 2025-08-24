@@ -1,6 +1,15 @@
 from datetime import datetime, timezone
 from telegram.helpers import escape_markdown
 
+def _escape_markdown_v2(text: str) -> str:
+    """Escapes characters that have special meaning in MarkdownV2."""
+    special_chars = (
+        '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{ ', '}', '.', '!'
+    )
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
 def humanize_date(date_string):
     """Convert ISO date string to human-readable format"""
     try:
@@ -103,7 +112,7 @@ def get_license_emoji(license_name):
     }
     return license_emojis.get(license_name, '📄')
 
-def format_repo_info(repo_data):
+def format_repo_info(repo_data, is_admin_repo: bool = False):
     """Format repository basic information with enhanced UI"""
     if not repo_data:
         return "❌ Repository information not available"
@@ -195,6 +204,13 @@ def format_repo_info(repo_data):
     # Add default branch info
     default_branch = repo_data.get('default_branch', 'main')
     info += f"\n🌿 Default branch: `{escape_markdown(default_branch, 2)}`"
+
+    # Add admin specific badge and styling
+    if is_admin_repo:
+        admin_header = f"═══════ ✨👑 𝔸𝔻𝕄𝕀ℕ ℝ𝔼ℙ𝕆𝕊𝕀𝕋𝕆ℝ𝕐 👑✨ ═══════\n"
+        admin_badge = f"🧨🔥 Where Bugs Go to Multiply 🔥🧨\n"
+        admin_footer = f"\n═══════════ 🐛 End of Bugs 🐛 ═══════════\n"
+        info = f"{admin_header}{admin_badge}\n{info}{admin_footer}"
 
     return info
 

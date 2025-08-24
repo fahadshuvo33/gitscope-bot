@@ -10,6 +10,7 @@ from profile.repositories import ProfileRepositories
 from profile.social import ProfileSocial
 from profile.stats import ProfileStats
 from profile.avatar import AvatarHandler
+from utils.formatting import _escape_markdown_v2 # Import for direct use
 
 # Import the loading system
 from utils.loading import show_loading, show_static_loading
@@ -26,24 +27,34 @@ class ProfileHandler:
         self.avatar = AvatarHandler()
         self.SEARCH_ANIMATION = "pulse"
 
-    async def show_profile(self, update, context, username):
+    async def show_profile(self, update: Update, context: ContextTypes.DEFAULT_TYPE, username: str, loading_msg=None, is_admin_profile: bool = False):
         """Main entry point for showing user profile with loading animation"""
-        # Determine if it's a command or message
-        if hasattr(update, "message") and update.message:
-            loading_msg = await update.message.reply_text(
-                f"👤 **{username}'s Profile**\n\n💡 **Tip:** Searching for user...",
-                parse_mode="Markdown",
-            )
-        else:
-            # It's a callback query
-            query = update.callback_query
-            await query.answer()
-            loading_msg = query.message
-
+        # If a loading message isn't provided, create one.
+        if loading_msg is None:
+            if hasattr(update, "message") and update.message:
+                escaped_username = _escape_markdown_v2(username) # Use the imported function directly
+                try:
+                    loading_msg = await update.message.edit_text(
+                        f"👤 **{escaped_username}'s Profile**\n\n💡 **Tip:** Searching for user...",
+                        parse_mode="Markdown",
+                    )
+                except Exception:
+                    loading_msg = await update.message.reply_text(
+                        f"👤 **{escaped_username}'s Profile**\n\n💡 **Tip:** Searching for user...",
+                        parse_mode="Markdown",
+                    )
+            elif hasattr(update, "callback_query") and update.callback_query:
+                query = update.callback_query
+                await query.answer()
+                loading_msg = query.message
+            else:
+                logger.error("Invalid update object passed to show_profile and no loading_msg provided.")
+                return
+        
         # Show static loading first to preserve the window
         await show_static_loading(
             loading_msg,
-            f"👤 **{username}'s Profile**",
+            f"👤 **{username}'s Profile" + (" (Admin)" if is_admin_profile else ""),
             "Searching user",
             preserve_content=True,
             animation_type=self.SEARCH_ANIMATION,
@@ -52,7 +63,7 @@ class ProfileHandler:
         # Start animated loading
         loading_task = await show_loading(
             loading_msg,
-            f"👤 **{username}'s Profile**",
+            f"👤 **{username}'s Profile" + (" (Admin)" if is_admin_profile else ""),
             "Searching user",
             animation_type=self.SEARCH_ANIMATION,
         )
@@ -82,7 +93,7 @@ class ProfileHandler:
             context.user_data["current_view"] = "profile"  # Track current view
 
             # Display the profile
-            await self.display.show_user_profile(loading_msg, user_data, context, username)
+            await self.display.show_user_profile(loading_msg, user_data, context, username, is_admin_profile=is_admin_profile)
 
         except Exception as e:
             # Stop loading animation gracefully
@@ -453,24 +464,28 @@ class ProfileHandler:
             # Send profile message back
             chat_id = context.user_data.get("chat_id")
             if chat_id:
-                # Create new profile message
                 from telegram import Bot
                 bot = context.bot
 
+                # Retrieve original text/markup from context, if available
+                original_profile_text = context.user_data.get("original_profile_text", f"👤 **{username}'s Profile**\n\n")
+                original_profile_markup = context.user_data.get("original_profile_markup")
+
                 profile_message = await bot.send_message(
                     chat_id=chat_id,
-                    text=f"👤 **{username}'s Profile**\n\n💫 Restoring profile...",
-                    parse_mode="Markdown"
+                    text=f"{original_profile_text}\n\n💫 Restoring profile...",
+                    parse_mode="Markdown",
+                    reply_markup=original_profile_markup # Attempt to restore original markup
                 )
 
                 # Update context
                 context.user_data["current_view"] = "profile"
 
-                # Show the full profile
+                # Show the full profile - this will edit the newly sent message
                 await self.display.show_user_profile(profile_message, user_data, context, username)
 
         except Exception as e:
-            logger.error(f"Profile restore failed: {type(e).__name__}")
+            logger.error(f"Profile restore failed: {type(e).__name__} - {e}", exc_info=True)
             # Fallback - try to show profile anyway
             try:
                 chat_id = context.user_data.get("chat_id")
@@ -484,8 +499,8 @@ class ProfileHandler:
                             InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")
                         ]])
                     )
-            except Exception:
-                pass
+            except Exception as e_fallback:
+                logger.error(f"Final fallback error in profile restore: {type(e_fallback).__name__} - {e_fallback}")
 
     async def _show_loading_on_avatar(self, message, action, animation_type="magic"):
         """Show loading animation on avatar message"""

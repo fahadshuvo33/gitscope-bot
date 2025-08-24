@@ -6,6 +6,7 @@ import aiohttp
 
 # Import the loading system
 from utils.loading import show_loading, show_error, show_static_loading
+from utils.formatting import _escape_markdown_v2 # Import the new escape function
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class ProfileDisplay:
     def __init__(self):
         self.PROFILE_ANIMATION = "magic"  # Magic animation for profile loading
 
-    async def show_user_profile(self, message, user_data, context, username=None):
+    async def show_user_profile(self, message, user_data, context, username=None, is_admin_profile: bool = False):
         """Display beautiful user profile with loading animation and error handling"""
 
         # Extract username for loading display
@@ -23,7 +24,7 @@ class ProfileDisplay:
         # Show static loading first to preserve the window
         await show_static_loading(
             message,
-            f"👤 **{display_username}'s Profile**",
+            f"👤 **{_escape_markdown_v2(display_username)}'s Profile**", # Use the new escape function
             "Loading profile",
             preserve_content=True,
             animation_type=self.PROFILE_ANIMATION,
@@ -32,14 +33,14 @@ class ProfileDisplay:
         # Start animated loading
         loading_task = await show_loading(
             message,
-            f"👤 **{display_username}'s Profile**",
+            f"👤 **{_escape_markdown_v2(display_username)}'s Profile**", # Use the new escape function
             "Loading profile",
             animation_type=self.PROFILE_ANIMATION,
         )
 
         try:
             # Process the user data (no separate image)
-            profile_content = await self._build_profile_content(user_data, context)
+            profile_content = await self._build_profile_content(user_data, context, is_admin_profile=is_admin_profile)
 
             # Stop loading animation gracefully
             if loading_task and not loading_task.done():
@@ -50,6 +51,7 @@ class ProfileDisplay:
                     pass
 
             if not profile_content:
+                logger.error(f"_build_profile_content returned None for {display_username}")
                 await self._show_profile_error(message, display_username, "Invalid Data")
                 return
 
@@ -75,7 +77,7 @@ class ProfileDisplay:
                 except asyncio.CancelledError:
                     pass
 
-            logger.error(f"Profile display error for {display_username}: {type(e).__name__}")
+            logger.error(f"Profile display error for {_escape_markdown_v2(display_username)}: {type(e).__name__}", exc_info=True) # Log full exception info
             await self._show_profile_error(message, display_username, "Display Error")
 
     async def refresh_user_profile(self, message, username, context):
@@ -84,7 +86,7 @@ class ProfileDisplay:
         # Show static loading first to preserve the window
         await show_static_loading(
             message,
-            f"👤 **{username}'s Profile**",
+            f"👤 **{_escape_markdown_v2(username)}'s Profile**", # Use the new escape function
             "Refreshing profile",
             preserve_content=True,
             animation_type=self.PROFILE_ANIMATION,
@@ -93,7 +95,7 @@ class ProfileDisplay:
         # Start animated loading
         loading_task = await show_loading(
             message,
-            f"👤 **{username}'s Profile**",
+            f"👤 **{_escape_markdown_v2(username)}'s Profile**", # Use the new escape function
             "Refreshing profile",
             animation_type=self.PROFILE_ANIMATION,
         )
@@ -136,13 +138,16 @@ class ProfileDisplay:
                     pass
 
             # Log minimal error info
-            logger.error(f"Profile refresh error for {username}: {type(e).__name__}")
+            logger.error(f"Profile refresh error for {_escape_markdown_v2(username)}: {type(e).__name__}", exc_info=True) # Log full exception info
             await self._show_profile_error(message, username, "Refresh Error")
 
-    async def _build_profile_content(self, user_data, context):
+    async def _build_profile_content(self, user_data, context, is_admin_profile: bool = False):
         """Build enhanced profile content from user data"""
+        logger.debug(f"_build_profile_content: Received user_data type: {type(user_data)}")
+        logger.debug(f"_build_profile_content: Received user_data: {user_data}")
         try:
             if not user_data or not isinstance(user_data, dict):
+                logger.error(f"_build_profile_content: Invalid user_data received: {user_data}")
                 return None
 
             # Get user info safely
@@ -159,31 +164,39 @@ class ProfileDisplay:
             followers = user_data.get("followers", 0)
             following = user_data.get("following", 0)
             public_gists = user_data.get("public_gists", 0)
+            
+            logger.debug(f"_build_profile_content: Extracted name: {name}, username: {username}")
+            logger.debug(f"_build_profile_content: Extracted public_repos: {public_repos}, followers: {followers}, following: {following}")
 
             # Clean location and company
             location = self._clean_text_field(location)
             company = self._clean_text_field(company)
+            logger.debug(f"_build_profile_content: Cleaned location: {location}, company: {company}")
 
             # Get additional info from README
             readme_info = await self._get_readme_info(username)
+            logger.debug(f"_build_profile_content: Readme info: {readme_info}")
 
             # Format join date
             created_at = user_data.get("created_at", "")
             years_on_github = 0
+            logger.debug(f"_build_profile_content: Raw created_at: {created_at}")
             if created_at:
                 try:
                     created_date = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%SZ")
                     joined = created_date.strftime("%B %d, %Y")
                     years_on_github = datetime.now().year - created_date.year
-                except Exception:
+                    logger.debug(f"_build_profile_content: Formatted joined: {joined}, years_on_github: {years_on_github}")
+                except Exception as date_error:
+                    logger.error(f"_build_profile_content: Date parsing error for '{created_at}': {date_error}")
                     joined = "Unknown"
                     years_on_github = 0
             else:
                 joined = "Unknown"
 
             # Build beautiful profile - REMOVED CLICKABLE USERNAME
-            profile_text = f"👤 **{name}**\n"
-            profile_text += f"🏷️ **{username}**"
+            profile_text = f"👤 **{_escape_markdown_v2(name)}**\n" # Use the new escape function
+            profile_text += f"🏷️ **{_escape_markdown_v2(username)}**" # Use the new escape function
 
             # Add profile indicators
             if company:
@@ -202,7 +215,7 @@ class ProfileDisplay:
             profile_text += "\n\n"  # FIXED: This was inside the if statement
 
             if bio:
-                profile_text += f"📝 _{bio[:150]}{'...' if len(bio) > 150 else ''}_\n\n"
+                profile_text += f"📝 _{_escape_markdown_v2(bio[:150])}{'...' if len(bio) > 150 else ''}_\n\n" # Use the new escape function
 
             # Stats section
             profile_text += "📊 **GitHub Stats**\n"
@@ -214,15 +227,15 @@ class ProfileDisplay:
             # Details section
             profile_text += "ℹ️ **Profile Details**\n"
             if company:
-                profile_text += f"🏢 {company}\n"
+                profile_text += f"🏢 {_escape_markdown_v2(company)}\n" # Use the new escape function
             if location:
-                profile_text += f"📍 {location}\n"
+                profile_text += f"📍 {_escape_markdown_v2(location)}\n" # Use the new escape function
             if blog:
                 if not blog.startswith(("http://", "https://")):
                     blog = f"https://{blog}"
-                profile_text += f"🌐 [Website]({blog})\n"
+                profile_text += f"🌐 [{_escape_markdown_v2(blog)}]({blog})\n" # Use the new escape function
             if twitter:
-                profile_text += f"🐦 [@{twitter}](https://twitter.com/{twitter})\n"
+                profile_text += f"🐦 [@{_escape_markdown_v2(twitter)}](https://twitter.com/{twitter})\n" # Use the new escape function
 
             # Add social links if found
             if readme_info.get('telegram'):
@@ -231,45 +244,53 @@ class ProfileDisplay:
             if readme_info.get('cv'):
                 profile_text += f"📄 [CV/Resume]({readme_info['cv']})\n"
 
-            profile_text += f"📅 Joined {joined}"
+            profile_text += f"📅 Joined {_escape_markdown_v2(joined)}"
             if years_on_github > 0:
                 profile_text += f" ({years_on_github} years ago)"
             profile_text += "\n"
 
-            profile_text += f"\n🔗 [View on GitHub](https://github.com/{username})"
+            profile_text += f"\n🔗 [View on GitHub](https://github.com/{_escape_markdown_v2(username)})" # Use the new escape function
             profile_text += f"\n\n💡 **Tip:** Use the 📸 button to view the profile picture!"
 
+            # Add admin specific badge and styling
+            if is_admin_profile:
+                # Add a prominent admin badge and top/bottom separators
+                admin_header = f"═══════ 💎⚡ 𝔸𝔻𝕄𝕀ℕ ℙℝ𝕆𝔽𝕀𝕃𝔼 ⚡💎 ═══════\n"
+                admin_badge = f"💡🙃🚫 Spoiler: Nothing Special Here 🚫🙃💡\n"
+                admin_footer = f"\n═══ ❌🔥 Nothing Survives This Profile 🔥❌ ═══\n"
+                profile_text = f"{admin_header}{admin_badge}\n{profile_text}{admin_footer}"
+            
             # Create action buttons with avatar button
             keyboard = [
                 [
                     InlineKeyboardButton(
-                        "📸 View Avatar", callback_data=f"show_avatar_{username}"
+                        "📸 View Avatar", callback_data=f"show_avatar_{_escape_markdown_v2(username)}" # Use the new escape function
                     ),
                     InlineKeyboardButton(
-                        "📂 Repositories", callback_data=f"user_repos_{username}"
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        "⭐ Starred", callback_data=f"user_starred_{username}"
-                    ),
-                    InlineKeyboardButton(
-                        f"👥 Followers ({followers:,})",
-                        callback_data=f"user_followers_{username}",
+                        "📂 Repositories", callback_data=f"user_repos_{_escape_markdown_v2(username)}" # Use the new escape function
                     ),
                 ],
                 [
                     InlineKeyboardButton(
-                        f"👤 Following ({following:,})",
-                        callback_data=f"user_following_{username}",
+                        "⭐ Starred", callback_data=f"user_starred_{_escape_markdown_v2(username)}" # Use the new escape function
                     ),
                     InlineKeyboardButton(
-                        "📊 Stats & Activity", callback_data=f"user_stats_{username}"
+                        f"👥 Followers ({_escape_markdown_v2(f'{followers:,}')})", # Apply formatting before escaping
+                        callback_data=f"user_followers_{_escape_markdown_v2(username)}", # Use the new escape function
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        f"👤 Following ({_escape_markdown_v2(f'{following:,}')})", # Apply formatting before escaping
+                        callback_data=f"user_following_{_escape_markdown_v2(username)}", # Use the new escape function
+                    ),
+                    InlineKeyboardButton(
+                        "📊 Stats & Activity", callback_data=f"user_stats_{_escape_markdown_v2(username)}" # Use the new escape function
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔄 Refresh", callback_data=f"refresh_user_{username}"
+                        "🔄 Refresh", callback_data=f"refresh_user_{_escape_markdown_v2(username)}" # Use the new escape function
                     ),
                     InlineKeyboardButton("⬅️ Back", callback_data="back_to_start"),
                 ],
@@ -278,7 +299,7 @@ class ProfileDisplay:
             return profile_text, keyboard
 
         except Exception as e:
-            logger.warning(f"Profile content build error: {type(e).__name__}")
+            logger.warning(f"Profile content build error: {type(e).__name__} - {e}", exc_info=True) # Log full exception info
             return None
 
     async def _get_readme_info(self, username):
@@ -314,6 +335,7 @@ class ProfileDisplay:
             # Return default empty info - don't raise
 
         return info
+
     def _extract_social_links(self, content):
         """Extract social links from README content using simple string operations"""
         info = {'telegram': None, 'cv': None}
@@ -383,7 +405,7 @@ class ProfileDisplay:
 
     async def _show_profile_error(self, message, username, error_type):
         """Show profile error with structured message and action buttons"""
-        error_text = f"👤 **{username}'s Profile**\n\n"
+        error_text = f"👤 **{_escape_markdown_v2(username)}'s Profile**\n\n" # Use the new escape function
         error_text += f"❌ **{error_type}**\n\n"
         error_text += f"Unable to display profile information.\n\n"
         error_text += f"**Possible causes:**\n"
@@ -395,7 +417,7 @@ class ProfileDisplay:
         keyboard = [
             [
                 InlineKeyboardButton(
-                    "🔄 Try Again", callback_data=f"refresh_user_{username}"
+                    "🔄 Try Again", callback_data=f"refresh_user_{_escape_markdown_v2(username)}" # Use the new escape function
                 ),
                 InlineKeyboardButton(
                     "⬅️ Back to Start", callback_data="back_to_start"
@@ -417,7 +439,7 @@ class ProfileDisplay:
         """Show loading state for profile - useful for external calls"""
         await show_static_loading(
             message,
-            f"👤 **{username}'s Profile**",
+            f"👤 **{_escape_markdown_v2(username)}'s Profile**", # Use the new escape function
             "Loading profile",
             preserve_content=True,
             animation_type=self.PROFILE_ANIMATION,

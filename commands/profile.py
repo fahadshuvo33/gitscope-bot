@@ -5,6 +5,9 @@ import re
 
 # Import the loading system
 from utils.loading import show_static_loading, show_error
+from admin import ADMIN_GITHUB_USERNAME
+from admin.admin_profile import show_admin_profile
+from utils.formatting import _escape_markdown_v2
 
 logger = logging.getLogger(__name__)
 
@@ -12,97 +15,33 @@ logger = logging.getLogger(__name__)
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /user or /profile command with validation and loading"""
 
-    # Check if called from a message
-    if not update.message:
-        return
-
-    # Get username from command arguments or message text
-    username = None
-    
-    if context.args:
-        # Get username from command args
-        raw_username = " ".join(context.args).strip()
-        username = _clean_username(raw_username)
-    else:
-        # Check if the message text contains @username
-        message_text = update.message.text
-        if message_text:
-            # Extract username from message (handles @username sent directly)
-            parts = message_text.split()
-            for part in parts:
-                if part.startswith('@') and len(part) > 1:
-                    username = _clean_username(part)
-                    break
-    
-    # If still no username, show help
-    if not username:
+    # Validate command arguments
+    if not update.message or not context.args:
         await _show_usage_help(update.message)
         return
 
-    # Validate username format
+    username = context.args[0].replace("@", "").strip()
+
+    # Check if it's the admin's profile
+    if username.lower() == ADMIN_GITHUB_USERNAME.lower():
+        await show_admin_profile(update, context, username)
+        return
+
+    # Validate username format for non-admin profiles
     validation_result = _validate_github_username(username)
     if not validation_result["valid"]:
         await _show_validation_error(update.message, username, validation_result["error"])
         return
 
-    # IMPORTANT: The initial message is handled by profile_handler.show_profile
-    # This prevents the two-block issue by letting the handler manage the message lifecycle
-    
+    # Show initial loading state for non-admin profiles
+    loading_msg = await update.message.reply_text(
+        f"👤 **{_escape_markdown_v2(username)}'s Profile**\n\n💡 **Tip:** Starting search...",
+        parse_mode="Markdown"
+    )
+
     try:
         # Import and use the profile handler
         from profile.handler import profile_handler
-
-        # Show the profile using the handler's robust system, passing the original update
-        await profile_handler.show_profile(update, context, username)
-
-    except ImportError as e:
-        logger.error(f"Profile handler import error: {type(e).__name__} - {e}")
-        # Use original message for error if possible
-        if update.message:
-            await _show_system_error(update.message, username, "System Error")
-    except Exception as e:
-        logger.error(f"Profile command error for {username}: {type(e).__name__} - {e}")
-        # Use original message for error if possible
-        if update.message:
-            await _show_system_error(update.message, username, "Unexpected Error")
-
-
-# Handle @username messages directly (not as command)
-async def handle_at_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle messages that start with @username"""
-    if not update.message or not update.message.text:
-        return
-    
-    text = update.message.text.strip()
-    
-    # Check if message starts with @ and has more than just @
-    if text.startswith('@') and len(text) > 1:
-        # Extract username
-        username = _clean_username(text.split()[0])
-        
-        if username:
-            # Validate username format
-            validation_result = _validate_github_username(username)
-            if not validation_result["valid"]:
-                await _show_validation_error(update.message, username, validation_result["error"])
-                return
-            
-            # Delete the user's message to keep chat clean
-            try:
-                await update.message.delete()
-            except:
-                pass
-            
-            # Send loading message
-            escaped_username = _escape_markdown(username)
-            loading_msg = await update.message.chat.send_message(
-                f"👤 **{escaped_username}'s Profile**\n\n💡 **Tip:** Searching GitHub...",
-                parse_mode="Markdown"
-            )
-            
-            try:
-                # Import and use the profile handler
-                from profile.handler import profile_handler
 
                 # Create a mock update object for the profile handler
                 class MockUpdate:
@@ -115,26 +54,22 @@ async def handle_at_username(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 # Show the profile using the handler's robust system
                 await profile_handler.show_profile(mock_update, context, username)
 
-            except ImportError as e:
-                logger.error(f"Profile handler import error: {type(e).__name__} - {e}")
-                await _show_system_error(loading_msg, username, "System Error")
-            except Exception as e:
-                logger.error(f"Profile command error for {username}: {type(e).__name__} - {e}")
-                await _show_system_error(loading_msg, username, "Unexpected Error")
-            
-            return True
-    
-    return False
+    except ImportError as e:
+        logger.error(f"Profile handler import error: {type(e).__name__}")
+        await _show_system_error(loading_msg, username, "System Error")
+    except Exception as e:
+        logger.error(f"Profile command error for {username}: {type(e).__name__}")
+        await _show_system_error(loading_msg, username, "Unexpected Error")
 
 
 def _clean_username(username):
     """Clean and normalize username"""
     if not username:
         return ""
-    
+
     # Remove @ symbol if present at the start
     username = username.lstrip('@')
-    
+
     # Remove any URL parts if someone pastes a GitHub URL
     if 'github.com' in username:
         # Extract username from URL
@@ -147,28 +82,18 @@ def _clean_username(username):
     elif '/' in username:
         # If it contains / but not github.com, take the first part
         username = username.split('/')[0]
-    
+
     # Remove common URL prefixes/suffixes
     username = username.replace('https://', '').replace('http://', '')
     username = username.replace('www.', '').replace('.git', '')
-    
+
     # Clean whitespace and normalize (don't lowercase to preserve original case)
     username = username.strip()
-    
+
     return username
 
 
-def _escape_markdown(text):
-    """Escape special characters for Markdown"""
-    # List of characters that need escaping in Markdown
-    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    
-    escaped_text = text
-    for char in special_chars:
-        escaped_text = escaped_text.replace(char, f'\\{char}')
-    
-    return escaped_text
-
+# Removed _escape_markdown as it's now in utils/formatting.py
 
 def _validate_github_username(username):
     """Validate GitHub username format"""
@@ -199,6 +124,8 @@ def _validate_github_username(username):
     # Additional checks for common issues
     reserved_names = ['admin', 'root', 'api', 'www', 'github', 'support', 'help', 'about', 'blog', 'api', 'status']
     if username.lower() in reserved_names:
+    reserved_names = ['admin', 'root', 'api', 'www', 'github', 'support', 'help', 'about', 'blog', 'api', 'status']
+    if username.lower() in reserved_names:
         return {"valid": False, "error": "reserved"}
 
     return {"valid": True, "error": None}
@@ -212,8 +139,8 @@ async def _show_usage_help(message):
         "**Examples:**\n"
         "• `/user octocat`\n"
         "• `/user torvalds`\n"
-        "• `@gaearon` just send the @username\n\n"
-        "💡 **Tip:** You can use @ symbol or just the username\\!"
+        f"• `{_escape_markdown_v2("@gaearon")}` (just send the @username)\n\n" # Use _escape_markdown_v2
+        "💡 **Tip:** You can use @ symbol or just the username!"
     )
 
     try:
@@ -230,18 +157,23 @@ async def _show_validation_error(message, username, error_type):
     """Show username validation error with helpful guidance"""
     
     # Escape username for display
-    display_username = _escape_markdown(username) if username else "empty"
+    display_username = _escape_markdown_v2(username) if username else "empty" # Use the new escape function
 
     error_messages = {
         "empty": "Username cannot be empty",
-        "too_long": f"Username '{display_username}' is too long max 39 characters",
+        "too_long": f"Username '{display_username}' is too long (max 39 characters)",
         "too_short": "Username is too short",
+        "hyphen_edges": f"Username '{display_username}' cannot start or end with a hyphen",
+        "double_hyphen": f"Username '{display_username}' cannot contain consecutive hyphens",
+        "invalid_chars": f"Username '{display_username}' contains invalid characters",
+        "reserved": f"Username '{display_username}' appears to be reserved"
         "hyphen_edges": f"Username '{display_username}' cannot start or end with a hyphen",
         "double_hyphen": f"Username '{display_username}' cannot contain consecutive hyphens",
         "invalid_chars": f"Username '{display_username}' contains invalid characters",
         "reserved": f"Username '{display_username}' appears to be reserved"
     }
 
+    specific_error = error_messages.get(error_type, f"Username '{display_username}' is invalid")
     specific_error = error_messages.get(error_type, f"Username '{display_username}' is invalid")
 
     error_text = (
@@ -255,6 +187,10 @@ async def _show_validation_error(message, username, error_type):
         "• `/user octocat`\n"
         "• `/user torvalds`\n"
         "• Just send `@username`"
+        "**Valid Examples:**\n"
+        "• `/user octocat`\n"
+        "• `/user torvalds`\n"
+        "• Just send `@username`"
     )
 
     try:
@@ -263,16 +199,18 @@ async def _show_validation_error(message, username, error_type):
         logger.warning(f"Validation error display failed: {type(e).__name__}")
         # Fallback to simple message
         await message.reply_text("❌ Invalid username. Please check and try again.")
+        await message.reply_text("❌ Invalid username. Please check and try again.")
 
 
 async def _show_system_error(message, username, error_type):
     """Show system error with structured message"""
     try:
         # Escape username for display
-        escaped_username = _escape_markdown(username)
+        escaped_username = _escape_markdown_v2(username) # Use the new escape function
         
         error_text = await show_error(
             message,
+            f"👤 **{escaped_username}'s Profile**",
             f"👤 **{escaped_username}'s Profile**",
             error_type,
             preserve_content=True,
@@ -282,10 +220,12 @@ async def _show_system_error(message, username, error_type):
         if error_type == "System Error":
             error_text = error_text.replace(
                 f"❌❌ {error_type} - Please try again ❌❌",
+                f"❌❌ {error_type} - Please try again ❌❌",
                 "⚙️ System temporarily unavailable"
             )
         elif error_type == "Unexpected Error":
             error_text = error_text.replace(
+                f"❌❌ {error_type} - Please try again ❌❌",
                 f"❌❌ {error_type} - Please try again ❌❌",
                 "🔄 Something unexpected happened"
             )
@@ -298,8 +238,11 @@ async def _show_system_error(message, username, error_type):
         try:
             await message.edit_text(
                 "❌ Error loading profile. Please try again later."
+                "❌ Error loading profile. Please try again later."
             )
         except Exception:
+            # Don't send another message, just log the error
+            logger.error(f"Failed to show error message: {e}")
             # Don't send another message, just log the error
             logger.error(f"Failed to show error message: {e}")
 
@@ -311,8 +254,10 @@ def get_command_help():
     return {
         "command": "/user",
         "aliases": ["/profile"],
+        "aliases": ["/profile"],
         "description": "Search and display GitHub user profiles",
         "usage": "/user <username>",
+        "examples": ["/user octocat", "/user torvalds", "@gaearon"]
         "examples": ["/user octocat", "/user torvalds", "@gaearon"]
     }
 
@@ -323,3 +268,18 @@ def is_valid_username_format(username):
         return False
 
     username = _clean_username(username)
+    validation = _validate_github_username(username)
+    return validation["valid"]
+
+
+async def quick_profile_lookup(update, context, username):
+    """Quick profile lookup for other components to use"""
+    if not is_valid_username_format(username):
+        return False
+
+    try:
+        await profile_command(update, context)
+        return True
+    except Exception as e:
+        logger.warning(f"Quick lookup failed for {username}: {type(e).__name__}")
+        return False
