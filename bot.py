@@ -279,6 +279,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "languages",
             "releases",
             "refresh",
+            "repository",
         ]
 
         if action in repo_callbacks:
@@ -348,14 +349,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    # Clean startup messages
-    logger.info("GitHub Explorer Bot starting...")
-    logger.info("Available commands: /start, /help, /trending, /user")
-    logger.info("Bot is ready! Send /start to begin.")
-
-    print("🚀 GitHub Explorer Bot v2.0 started!")
-    print("📝 Commands: /start, /help, /trending, /user")
-    print("💡 Try sending: facebook/react or @octocat")
+    print("🚀 GitScope Bot v2.0 started!")
     print("⏹️  Press Ctrl+C to stop")
 
     try:

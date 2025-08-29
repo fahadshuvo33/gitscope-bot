@@ -58,7 +58,7 @@ class CommandRouter:
         try:
             # Answer callback query immediately to remove loading indicator
             await query.answer()
-            
+
             # Basic navigation with loading for heavy operations
             if action == "back_to_start":
                 await start_command(update, context)
@@ -72,38 +72,42 @@ class CommandRouter:
             # About & Developer
             elif action == "about":
                 await self._handle_with_loading(
-                    update, context, 
+                    update,
+                    context,
                     self.about.handle_about,
                     "ℹ️ **About GitScope Bot**",
                     "Loading information",
-                    "stars"
+                    "stars",
                 )
 
             elif action == "developer_profile":
                 await self._handle_with_loading(
-                    update, context,
+                    update,
+                    context,
                     self.developer.handle_developer_profile,
                     "👨‍💻 **Developer Profile**",
                     "Loading developer info",
-                    "tech"
+                    "tech",
                 )
 
             elif action == "source_code":
                 await self._handle_with_loading(
-                    update, context,
+                    update,
+                    context,
                     self.developer.handle_source_code,
                     "💻 **Source Code**",
                     "Loading repository",
-                    "tech"
+                    "tech",
                 )
 
             elif action == "other_projects":
                 await self._handle_with_loading(
-                    update, context,
+                    update,
+                    context,
                     self.developer.handle_other_projects,
                     "🚀 **Other Projects**",
                     "Loading projects",
-                    "rocket"
+                    "rocket",
                 )
 
             elif action == "rate_bot":
@@ -124,9 +128,7 @@ class CommandRouter:
                 elif len(parts) == 2:
                     # Handle basic language callbacks like trending_python (defaults to weekly)
                     language = parts[1]
-                    await self._handle_trending_with_loading(
-                        update, context, language
-                    )
+                    await self._handle_trending_with_loading(update, context, language)
 
                 else:
                     # Fallback for malformed trending callbacks
@@ -139,18 +141,31 @@ class CommandRouter:
                 or action.startswith("refresh_user_")
                 or action == "back_to_profile"
                 or action.startswith("show_avatar_")
+                or action.startswith("refresh_avatar_")
             ):
                 logger.info(f"Routing profile action: {action}")
-                logger.debug(f"DEBUG: handle_callback_query - Routing to profile handler for action: {action}")
+                logger.debug(
+                    f"DEBUG: handle_callback_query - Routing to profile handler for action: {action}"
+                )
                 try:
                     await self.profile.handle_profile_callback(update, context, action)
                 except Exception as e:
                     logger.error(
                         f"Profile callback error for action '{action}': {str(e)}"
                     )
-                    await query.message.edit_text(
-                        "❌ Could not process profile action. Please try again."
-                    )
+                    try:
+                        # Try to edit caption if it's a photo message
+                        if hasattr(query.message, "photo"):
+                            await query.message.edit_caption(
+                                caption="❌ Could not process profile action. Please try again.",
+                                parse_mode="Markdown",
+                            )
+                        else:
+                            await query.message.edit_text(
+                                "❌ Could not process profile action. Please try again."
+                            )
+                    except Exception as edit_error:
+                        logger.error(f"Error showing error message: {edit_error}")
 
             # Repository actions (when accessed from user profile)
             elif action.startswith("repo_"):
@@ -158,31 +173,49 @@ class CommandRouter:
 
             else:
                 logger.warning(f"Unknown callback action: {action}")
-                await query.message.edit_text("❌ Invalid action. Please try again.")
+                try:
+                    # Try to edit caption if it's a photo message
+                    if hasattr(query.message, "photo"):
+                        await query.message.edit_caption(
+                            caption="❌ Invalid action. Please try again.",
+                            parse_mode="Markdown",
+                        )
+                    else:
+                        await query.message.edit_text(
+                            "❌ Invalid action. Please try again."
+                        )
+                except Exception as edit_error:
+                    logger.error(f"Error showing invalid action message: {edit_error}")
 
         except Exception as e:
             logger.error(f"Error handling callback {action}: {str(e)}", exc_info=True)
             try:
-                await query.message.edit_text(
-                    "❌ Something went wrong. Please try again."
-                )
-            except:
-                # If edit fails, just log it
-                logger.error("Failed to show error message")
+                # Try to edit caption if it's a photo message
+                if hasattr(query.message, "photo"):
+                    await query.message.edit_caption(
+                        caption="❌ Something went wrong. Please try again.",
+                        parse_mode="Markdown",
+                    )
+                else:
+                    await query.message.edit_text(
+                        "❌ Something went wrong. Please try again."
+                    )
+            except Exception as edit_error:
+                logger.error(f"Failed to show error message: {edit_error}")
 
     async def _handle_with_loading(
-        self, 
-        update: Update, 
+        self,
+        update: Update,
         context: ContextTypes.DEFAULT_TYPE,
         handler_func,
         title: str,
         loading_text: str,
-        animation_type: str
+        animation_type: str,
     ):
         """Handle callback with loading animation"""
         query = update.callback_query
         message = query.message
-        
+
         # Show static loading first
         try:
             await show_static_loading(
@@ -194,7 +227,7 @@ class CommandRouter:
             )
         except Exception as e:
             logger.debug(f"Static loading skipped: {e}")
-        
+
         # Start animated loading
         loading_task = await show_loading(
             message,
@@ -203,11 +236,11 @@ class CommandRouter:
             animation_type=animation_type,
             preserve_content=True,
         )
-        
+
         try:
             # Brief wait for effect
             await asyncio.sleep(0.5)
-            
+
             # Stop loading animation
             if loading_task and not loading_task.done():
                 loading_task.cancel()
@@ -215,10 +248,10 @@ class CommandRouter:
                     await loading_task
                 except asyncio.CancelledError:
                     pass
-            
+
             # Call the actual handler
             await handler_func(update, context)
-            
+
         except Exception as e:
             # Stop loading on error
             if loading_task and not loading_task.done():
@@ -227,11 +260,10 @@ class CommandRouter:
                     await loading_task
                 except asyncio.CancelledError:
                     pass
-            
+
             logger.error(f"Error in {handler_func.__name__}: {e}")
             await message.edit_text(
-                f"❌ Error loading content. Please try again.",
-                parse_mode="Markdown"
+                f"❌ Error loading content. Please try again.", parse_mode="Markdown"
             )
 
     async def _handle_trending_with_loading(
@@ -239,15 +271,15 @@ class CommandRouter:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
         language: str,
-        time_range: str = "weekly"
+        time_range: str = "weekly",
     ):
         """Handle trending with loading animation"""
         query = update.callback_query
         message = query.message
-        
+
         # Create language display name
         lang_display = language.title() if language != "all" else "All Languages"
-        
+
         # Show static loading first
         try:
             await show_static_loading(
@@ -259,7 +291,7 @@ class CommandRouter:
             )
         except Exception as e:
             logger.debug(f"Static loading skipped: {e}")
-        
+
         # Start animated loading
         loading_task = await show_loading(
             message,
@@ -268,11 +300,11 @@ class CommandRouter:
             animation_type="fire",
             preserve_content=True,
         )
-        
+
         try:
             # Brief wait
             await asyncio.sleep(1.0)
-            
+
             # Stop loading animation
             if loading_task and not loading_task.done():
                 loading_task.cancel()
@@ -280,12 +312,12 @@ class CommandRouter:
                     await loading_task
                 except asyncio.CancelledError:
                     pass
-            
+
             # Call the trending handler
             await self.trending.handle_trending_by_language(
                 update, context, language, time_range
             )
-            
+
         except Exception as e:
             # Stop loading on error
             if loading_task and not loading_task.done():
@@ -294,11 +326,11 @@ class CommandRouter:
                     await loading_task
                 except asyncio.CancelledError:
                     pass
-            
+
             logger.error(f"Error fetching trending repos: {e}")
             await message.edit_text(
                 f"❌ Error fetching trending repositories. Please try again.",
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
 
     async def handle_repository_callback(

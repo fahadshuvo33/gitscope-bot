@@ -30,29 +30,31 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Validate username format for non-admin profiles
     validation_result = _validate_github_username(username)
     if not validation_result["valid"]:
-        await _show_validation_error(update.message, username, validation_result["error"])
+        await _show_validation_error(
+            update.message, username, validation_result["error"]
+        )
         return
 
     # Show initial loading state for non-admin profiles
     loading_msg = await update.message.reply_text(
         f"👤 **{_escape_markdown_v2(username)}'s Profile**\n\n💡 **Tip:** Starting search...",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
 
     try:
         # Import and use the profile handler
         from profile.handler import profile_handler
 
-                # Create a mock update object for the profile handler
-                class MockUpdate:
-                    def __init__(self, message):
-                        self.message = message
-                        self.callback_query = None
+        # Create a mock update object for the profile handler
+        class MockUpdate:
+            def __init__(self, message):
+                self.message = message
+                self.callback_query = None
 
-                mock_update = MockUpdate(loading_msg)
+        mock_update = MockUpdate(loading_msg)
 
-                # Show the profile using the handler's robust system
-                await profile_handler.show_profile(mock_update, context, username)
+        # Show the profile using the handler's robust system
+        await profile_handler.show_profile(mock_update, context, username)
 
     except ImportError as e:
         logger.error(f"Profile handler import error: {type(e).__name__}")
@@ -68,24 +70,24 @@ def _clean_username(username):
         return ""
 
     # Remove @ symbol if present at the start
-    username = username.lstrip('@')
+    username = username.lstrip("@")
 
     # Remove any URL parts if someone pastes a GitHub URL
-    if 'github.com' in username:
+    if "github.com" in username:
         # Extract username from URL
-        parts = username.split('/')
+        parts = username.split("/")
         # Find the part after github.com
         for i, part in enumerate(parts):
-            if 'github.com' in part and i + 1 < len(parts):
+            if "github.com" in part and i + 1 < len(parts):
                 username = parts[i + 1]
                 break
-    elif '/' in username:
+    elif "/" in username:
         # If it contains / but not github.com, take the first part
-        username = username.split('/')[0]
+        username = username.split("/")[0]
 
     # Remove common URL prefixes/suffixes
-    username = username.replace('https://', '').replace('http://', '')
-    username = username.replace('www.', '').replace('.git', '')
+    username = username.replace("https://", "").replace("http://", "")
+    username = username.replace("www.", "").replace(".git", "")
 
     # Clean whitespace and normalize (don't lowercase to preserve original case)
     username = username.strip()
@@ -94,6 +96,7 @@ def _clean_username(username):
 
 
 # Removed _escape_markdown as it's now in utils/formatting.py
+
 
 def _validate_github_username(username):
     """Validate GitHub username format"""
@@ -111,20 +114,29 @@ def _validate_github_username(username):
     if len(username) < 1:
         return {"valid": False, "error": "too_short"}
 
-    if username.startswith('-') or username.endswith('-'):
+    if username.startswith("-") or username.endswith("-"):
         return {"valid": False, "error": "hyphen_edges"}
 
-    if '--' in username:
+    if "--" in username:
         return {"valid": False, "error": "double_hyphen"}
 
     # Check for valid characters (alphanumeric + single hyphens)
-    if not re.match(r'^[a-zA-Z0-9-]+$', username):
+    if not re.match(r"^[a-zA-Z0-9-]+$", username):
         return {"valid": False, "error": "invalid_chars"}
 
-    # Additional checks for common issues
-    reserved_names = ['admin', 'root', 'api', 'www', 'github', 'support', 'help', 'about', 'blog', 'api', 'status']
-    if username.lower() in reserved_names:
-    reserved_names = ['admin', 'root', 'api', 'www', 'github', 'support', 'help', 'about', 'blog', 'api', 'status']
+    reserved_names = [
+        "admin",
+        "root",
+        "api",
+        "www",
+        "github",
+        "support",
+        "help",
+        "about",
+        "blog",
+        "api",
+        "status",
+    ]
     if username.lower() in reserved_names:
         return {"valid": False, "error": "reserved"}
 
@@ -139,7 +151,7 @@ async def _show_usage_help(message):
         "**Examples:**\n"
         "• `/user octocat`\n"
         "• `/user torvalds`\n"
-        f"• `{_escape_markdown_v2("@gaearon")}` (just send the @username)\n\n" # Use _escape_markdown_v2
+        f"• `{_escape_markdown_v2("@gaearon")}` (just send the @username)\n\n"  # Use _escape_markdown_v2
         "💡 **Tip:** You can use @ symbol or just the username!"
     )
 
@@ -155,9 +167,11 @@ async def _show_usage_help(message):
 
 async def _show_validation_error(message, username, error_type):
     """Show username validation error with helpful guidance"""
-    
+
     # Escape username for display
-    display_username = _escape_markdown_v2(username) if username else "empty" # Use the new escape function
+    display_username = (
+        _escape_markdown_v2(username) if username else "empty"
+    )  # Use the new escape function
 
     error_messages = {
         "empty": "Username cannot be empty",
@@ -166,15 +180,12 @@ async def _show_validation_error(message, username, error_type):
         "hyphen_edges": f"Username '{display_username}' cannot start or end with a hyphen",
         "double_hyphen": f"Username '{display_username}' cannot contain consecutive hyphens",
         "invalid_chars": f"Username '{display_username}' contains invalid characters",
-        "reserved": f"Username '{display_username}' appears to be reserved"
-        "hyphen_edges": f"Username '{display_username}' cannot start or end with a hyphen",
-        "double_hyphen": f"Username '{display_username}' cannot contain consecutive hyphens",
-        "invalid_chars": f"Username '{display_username}' contains invalid characters",
-        "reserved": f"Username '{display_username}' appears to be reserved"
+        "reserved": f"Username '{display_username}' appears to be reserved",
     }
 
-    specific_error = error_messages.get(error_type, f"Username '{display_username}' is invalid")
-    specific_error = error_messages.get(error_type, f"Username '{display_username}' is invalid")
+    specific_error = error_messages.get(
+        error_type, f"Username '{display_username}' is invalid"
+    )
 
     error_text = (
         "❌ **Invalid Username**\n\n"
@@ -206,8 +217,8 @@ async def _show_system_error(message, username, error_type):
     """Show system error with structured message"""
     try:
         # Escape username for display
-        escaped_username = _escape_markdown_v2(username) # Use the new escape function
-        
+        escaped_username = _escape_markdown_v2(username)  # Use the new escape function
+
         error_text = await show_error(
             message,
             f"👤 **{escaped_username}'s Profile**",
@@ -221,13 +232,13 @@ async def _show_system_error(message, username, error_type):
             error_text = error_text.replace(
                 f"❌❌ {error_type} - Please try again ❌❌",
                 f"❌❌ {error_type} - Please try again ❌❌",
-                "⚙️ System temporarily unavailable"
+                "⚙️ System temporarily unavailable",
             )
         elif error_type == "Unexpected Error":
             error_text = error_text.replace(
                 f"❌❌ {error_type} - Please try again ❌❌",
                 f"❌❌ {error_type} - Please try again ❌❌",
-                "🔄 Something unexpected happened"
+                "🔄 Something unexpected happened",
             )
 
         await message.edit_text(error_text, parse_mode="Markdown")
@@ -249,6 +260,7 @@ async def _show_system_error(message, username, error_type):
 
 # Additional utility functions for other parts of the bot
 
+
 def get_command_help():
     """Get help text for the profile command"""
     return {
@@ -257,8 +269,7 @@ def get_command_help():
         "aliases": ["/profile"],
         "description": "Search and display GitHub user profiles",
         "usage": "/user <username>",
-        "examples": ["/user octocat", "/user torvalds", "@gaearon"]
-        "examples": ["/user octocat", "/user torvalds", "@gaearon"]
+        "examples": ["/user octocat", "/user torvalds", "@gaearon"],
     }
 
 

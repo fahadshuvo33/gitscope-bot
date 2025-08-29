@@ -6,9 +6,10 @@ import asyncio
 # Import the loading system
 from utils.loading import show_loading, show_static_loading
 
+
 class AboutHandler:
     def __init__(self):
-        self.bot_name = "GitHub Explorer Bot"
+        self.bot_name = "GitScope Bot"
         self.version = "2.0.0"
         self.ABOUT_ANIMATION = "sparkle"  # Animation type for about page
 
@@ -54,7 +55,7 @@ class AboutHandler:
             await query.edit_message_text(
                 about_text,
                 parse_mode="MarkdownV2",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                reply_markup=InlineKeyboardMarkup(keyboard),
             )
 
         except Exception as e:
@@ -76,25 +77,21 @@ class AboutHandler:
             f"🔧 Version: `{escape_markdown(self.version, 2)}`\n"
             f"🛠️ Built with: Python \\& python\\-telegram\\-bot\n"
             f"🔗 GitHub API: Official REST API v3\n\n"
-
             "🌟 *Features:*\n"
             "• 📊 Repository exploration\n"
             "• 👤 User profile viewing\n"
             "• 📈 Trending repositories\n"
             "• 💻 Language\\-based filtering\n"
             "• 🔍 Real\\-time GitHub data\n\n"
-
             "🚀 *New in v2\\.0:*\n"
             "• User profile exploration\n"
             "• Trending repositories by language\n"
             "• Enhanced navigation\n"
             "• Better error handling\n\n"
-
             "🔒 *Privacy:*\n"
             "• No data stored permanently\n"
             "• Only public GitHub data accessed\n"
             "• Your searches are not logged\n\n"
-
             "Made with ❤️ for developers\\!"
         )
 
@@ -102,11 +99,11 @@ class AboutHandler:
         """Build the about page keyboard"""
         return [
             [
-                InlineKeyboardButton("👨‍💻 Meet the Developer", callback_data="developer_profile")
+                InlineKeyboardButton(
+                    "👨‍💻 Meet the Developer", callback_data="developer_profile"
+                )
             ],
-            [
-                InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")
-            ]
+            [InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")],
         ]
 
     async def _show_about_error(self, message):
@@ -119,22 +116,19 @@ class AboutHandler:
         )
 
         keyboard = [
-            [
-                InlineKeyboardButton("🔄 Try Again", callback_data="about")
-            ],
-            [
-                InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")
-            ]
+            [InlineKeyboardButton("🔄 Try Again", callback_data="about")],
+            [InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")],
         ]
 
         try:
             await message.edit_text(
                 error_text,
                 parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                reply_markup=InlineKeyboardMarkup(keyboard),
             )
         except Exception:
             pass  # Silent fail for error display
+
 
 # Create instance
 about_handler = AboutHandler()
