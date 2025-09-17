@@ -396,10 +396,11 @@ async def search_repositories(
 async def fetch_user_repos(
     session: aiohttp.ClientSession,
     username: str,
-    limit: int = 10,
+    page: int = 1,
+    per_page: int = 30,
     sort: str = "updated"
 ) -> Optional[List[Dict]]:
-    """Fetch user's repositories"""
+    """Fetch user's repositories with pagination"""
     if not username or not username.strip():
         return None
 
@@ -407,12 +408,70 @@ async def fetch_user_repos(
         params = {
             "sort": sort,
             "direction": "desc",
-            "per_page": min(limit, 100)
+            "page": page,
+            "per_page": min(per_page, 100)
         }
         data = await _make_request_with_retry(session, f"/users/{username}/repos", params=params, timeout=6)
         return data
     except (NotFoundError, NetworkError, GitHubAPIError) as e:
         logger.error(f"Failed to fetch repos for user {username}: {e}")
+        return None
+
+async def fetch_user_followers(
+    session: aiohttp.ClientSession,
+    username: str,
+    page: int = 1,
+    per_page: int = 30
+) -> Optional[List[Dict]]:
+    """Fetch user followers with pagination"""
+    if not username or not username.strip():
+        return None
+    
+    url = f"{GITHUB_API_BASE}/users/{username}/followers"
+    params = {"page": page, "per_page": per_page}
+    
+    try:
+        return await make_github_request(session, url, params=params)
+    except Exception as e:
+        logger.error(f"Error fetching followers for {username}: {e}")
+        return None
+
+async def fetch_user_following(
+    session: aiohttp.ClientSession,
+    username: str,
+    page: int = 1,
+    per_page: int = 30
+) -> Optional[List[Dict]]:
+    """Fetch users that this user is following with pagination"""
+    if not username or not username.strip():
+        return None
+    
+    url = f"{GITHUB_API_BASE}/users/{username}/following"
+    params = {"page": page, "per_page": per_page}
+    
+    try:
+        return await make_github_request(session, url, params=params)
+    except Exception as e:
+        logger.error(f"Error fetching following for {username}: {e}")
+        return None
+
+async def fetch_user_starred(
+    session: aiohttp.ClientSession,
+    username: str,
+    page: int = 1,
+    per_page: int = 30
+) -> Optional[List[Dict]]:
+    """Fetch repositories starred by user with pagination"""
+    if not username or not username.strip():
+        return None
+    
+    url = f"{GITHUB_API_BASE}/users/{username}/starred"
+    params = {"page": page, "per_page": per_page}
+    
+    try:
+        return await make_github_request(session, url, params=params)
+    except Exception as e:
+        logger.error(f"Error fetching starred repos for {username}: {e}")
         return None
 
 async def fetch_trending_repos(

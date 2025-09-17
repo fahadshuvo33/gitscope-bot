@@ -10,360 +10,182 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from telegram.constants import ParseMode
 from dotenv import load_dotenv
 import os
 
-# Import the main router and handlers
-from commands import command_router
-from features.repository import repository_handler
-from features.trending_repos import trending_handler
-from admin import ADMIN_GITHUB_USERNAME
-from admin.admin_profile import show_admin_profile
-from admin.admin_repository import show_admin_repository
-
-# Import README handlers for pagination - REMOVED (not present in handlers/readme.py)
-# from handlers.readme import handle_readme_navigation, handle_readme_pages
-import aiohttp
-
+# Load environment
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_TELEGRAM_USERNAME = os.getenv("ADMIN_TELEGRAM_USERNAME", "").lower()
 
+# Import utils - FIX: Import the actual utils instance
+from utils.manager import utils
+from utils.db_logger import log_activity
+from utils.input_parser import InputParser
+# from utils.loading import update_content_with_loading
+# from utils.loading import withLoading
+from commands import about_command,start_command,developer_command,help_command,trending_command,handle_profile,handle_repository
+from admin import logs_command, handle_logs_callback, is_admin
+# Import templates
+from templates import (
+    get_invalid_input_message,
+)
 
-# Configure clean logging
 def setup_logging():
     """Setup clean logging configuration"""
-
-    class CleanFormatter(logging.Formatter):
-        def format(self, record):
-            if record.levelno >= logging.WARNING:
-                return f"⚠️  {record.levelname}: {record.getMessage()}"
-            elif record.name == "__main__":
-                return f"🤖 {record.getMessage()}"
-            else:
-                return f"ℹ️  {record.getMessage()}"
-
-    # Setup root logger to catch all messages, but only output WARNING and above
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
-
-    # Create console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(CleanFormatter())
-
-    # Your bot logger
-    bot_logger = logging.getLogger(__name__)
-    bot_logger.setLevel(logging.DEBUG)
-    bot_logger.addHandler(console_handler)
-    bot_logger.propagate = False
-
+    
+    # Set up basic config first
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+    
+    # Get logger
+    logger = logging.getLogger(__name__)
+    
     # Suppress noisy loggers
-    logging.getLogger("httpx").setLevel(logging.ERROR)
-    logging.getLogger("telegram").setLevel(logging.ERROR)
-    logging.getLogger("apscheduler").setLevel(logging.ERROR)
-    logging.getLogger("asyncio").setLevel(logging.ERROR)
-    logging.getLogger("aiohttp").setLevel(logging.ERROR)
-    logging.getLogger("urllib3").setLevel(logging.ERROR)
-
-    return bot_logger
-
+    for logger_name in ["httpx", "telegram", "apscheduler", "asyncio", "aiohttp", "urllib3"]:
+        logging.getLogger(logger_name).setLevel(logging.ERROR)
+    
+    return logger
 
 logger = setup_logging()
 
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages (repo names, GitHub URLs, or usernames)"""
-    text = update.message.text.strip()
-
-    # Handle @username format (user profile)
-    if text.startswith("@") and len(text) > 1:
-        username = text[1:]
-        context.args = [username]
-        logger.info(f"User profile requested: @{username}")
-        if username.lower() == ADMIN_GITHUB_USERNAME.lower():
-            await show_admin_profile(update, context, username)
-        else:
-            await command_router.handle_profile(update, context)
-        return
-
-    # Handle GitHub URLs
-    if "github.com" in text:
-        try:
-            parts = text.split("github.com/")[-1].split("/")
-            if len(parts) >= 2:
-                repo_full_name = f"{parts[0]}/{parts[1]}"
-                owner = parts[0]
-                logger.info(f"Repository requested from URL: {repo_full_name}")
-                loading_msg = await update.message.reply_text(
-                    "🔄 Loading...", parse_mode=None
-                )
-                if owner.lower() == ADMIN_GITHUB_USERNAME.lower():
-                    await show_admin_repository(
-                        update, context, repo_full_name, loading_msg
-                    )
-                else:
-                    await repository_handler.show_repository_info(
-                        loading_msg, repo_full_name, context
-                    )
-                return
-        except Exception as e:
-            logger.warning(f"Failed to parse GitHub URL: {text}")
-            # If parsing fails, it might fall through. Should it return? For now, let it fall.
-
-    # Handle direct repo names (owner/repo)
-    if "/" in text and len(text.split("/")) == 2:
-        repo_full_name = text
-        owner = text.split("/")[0]
-        logger.info(f"Repository requested: {repo_full_name}")
-        loading_msg = await update.message.reply_text("🔄 Loading...", parse_mode=None)
-        if owner.lower() == ADMIN_GITHUB_USERNAME.lower():
-            await show_admin_repository(update, context, repo_full_name, loading_msg)
-        else:
-            await repository_handler.show_repository_info(
-                loading_msg, repo_full_name, context
-            )
-        return
-
-    # NEW: Better single word username validation
-    if (
-        " " not in text
-        and len(text) > 0
-        and not text.startswith("/")
-        and
-        # More strict validation
-        3 <= len(text) <= 39  # GitHub username length limits
-        and text.replace("-", "")
-        .replace("_", "")
-        .replace(".", "")
-        .isalnum()  # Allow dots too
-        and not text.isdigit()  # Don't treat pure numbers as usernames
-        and not text.upper()
-        == text  # Don't treat ALL CAPS as usernames (likely not usernames)
-        and text.lower() != text.upper()
-    ):  # Must have letters, not just symbols
-
-        logger.info(f"Single word username requested: {text}")
-
-        # Add a quick validation before processing
-        if await is_likely_username(text):
-            username = text
-            if username.lower() == ADMIN_GITHUB_USERNAME.lower():
-                from profile.handler import (
-                    profile_handler,
-                )  # Import here to avoid circular dependency
-
-                await show_admin_profile(update, context, username)
-            else:
-                from profile.handler import profile_handler
-
-                await profile_handler.show_profile(update, context, username)
-            return
-
-    # Help message for unknown input
-    await update.message.reply_text(
-        "🤔 I can help you with:\n\n"
-        "📂 **Repository:** `owner/repository`\n"
-        "👤 **User profile:** `username` or `@username`\n"
-        "🔗 **GitHub URL:** Just paste it!\n\n"
-        "💡 **Commands:**\n"
-        "• `/help` - Detailed help\n"
-        "• `/trending` - Trending repos\n"
-        "• `/user username` - User profile\n\n"
-        "Try sending:\n"
-        "• `facebook/react` (repository)\n"
-        "• `octocat` (username)\n"
-        "• `@octocat` (username with @)",
-        parse_mode="Markdown",
-    )
-
-
-async def is_likely_username(text):
-    """Quick check if text is likely a GitHub username"""
-    # Common non-username patterns to avoid
-    non_username_patterns = [
-        # Common words that aren't usernames
-        "hello",
-        "hi",
-        "test",
-        "help",
-        "thanks",
-        "ok",
-        "yes",
-        "no",
-        # Technical terms
-        "api",
-        "url",
-        "http",
-        "https",
-        "www",
-        "com",
-        "org",
-        # Common exclamations
-        "wow",
-        "cool",
-        "nice",
-        "good",
-        "bad",
-        "error",
-    ]
-
-    # If it's a common word, probably not a username
-    if text.lower() in non_username_patterns:
-        return False
-
-    # If it has multiple consecutive dots/hyphens, probably not a username
-    if ".." in text or "--" in text or "__" in text:
-        return False
-
-    # If it starts/ends with special chars, probably not a username
-    if text.startswith(("-", "_", ".")) or text.endswith(("-", "_", ".")):
-        return False
-
-    return True
-
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Route button presses to appropriate handlers"""
-    query = update.callback_query
-    action = query.data
-
+    """Handle text messages - parse GitHub profiles and repositories"""
     try:
-        # Command-related callbacks
-        command_callbacks = [
-            "back_to_start",
-            "help",
-            "trending",
-            "about",
-            "developer_profile",
-            "source_code",
-            "other_projects",
-            "rate_bot",
-        ]
+        text = update.message.text.strip()
+        user = update.effective_user
+        user_id = user.username or f"user_{user.id}"
+        
+        # FIX: Pass user.username instead of user object
+        user_is_admin = is_admin(user.username) if user.username else False
+        
+        logger.info(f"Text received from {user_id}: {text}")
+        
+        parsed = InputParser.parse_input(text)
 
-        if action in command_callbacks:
-            await command_router.handle_callback_query(update, context)
+        if parsed['type'] == 'command':
+            command = parsed['command']
+            if command == 'start':
+                await start_command(update, context)
+            elif command == 'help':
+                await help_command(update, context)
+            elif command == 'trending':
+                await trending_command(update, context)
+            elif command == 'developer':
+                await developer_command(update, context)
+            elif command == 'about':
+                await about_command(update, context)
+            elif command == 'logs':
+                await logs_command(update, context)
             return
-
-        # Trending-related callbacks
-        if action.startswith("trending_"):
-            await command_router.handle_callback_query(update, context)
-            return
-
-        # User profile callbacks
-        if (
-            action.startswith("user_")
-            or action.startswith("refresh_user_")
-            or action.startswith("refresh_avatar_")
-            or action == "back_to_profile"
-            or action.startswith("show_avatar_")
-        ):
-            await command_router.handle_callback_query(update, context)
-            return
-
-        # README navigation callbacks (Removed as they are not found in handlers/readme.py)
-        # if action == "readme_next" or action == "readme_prev" or action.startswith("readme_page_"):
-        #     handle_readme_navigation(update, context)
-        #     return
-
-        # if action == "readme_pages":
-        #     handle_readme_pages(update, context)
-        #     return
-
-        # Repository callbacks (including regular readme)
-        repo_callbacks = [
-            "contributors",
-            "readme",
-            "prs",
-            "issues",
-            "languages",
-            "releases",
-            "refresh",
-            "repository",
-        ]
-
-        if action in repo_callbacks:
-            repo = context.user_data.get("current_repo")
-            if repo and repo.split("/")[0].lower() == ADMIN_GITHUB_USERNAME.lower():
-                # For now, special handling for admin repo callbacks might just call the generic ones
-                # but this is where you'd add custom logic if needed.
-                await repository_handler.handle_callback(update, context, action)
-            else:
-                await repository_handler.handle_callback(update, context, action)
-            return
-
-        # If none of the above matched
-
-        # If none of the above matched
-        logger.warning(f"Unknown callback action: {action}")
-        await query.answer("❌ Unknown action")
-
-    except Exception as e:
-        logger.error(f"Error handling callback {action}: {str(e)}")
-        await query.answer("❌ Something went wrong. Please try again.")
-
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Handle errors"""
-    logger.error(f"Bot error: {str(context.error)}")
-
-    # Try to inform user about the error
-    if update and hasattr(update, "callback_query") and update.callback_query:
-        try:
-            await update.callback_query.answer(
-                "❌ Something went wrong. Please try again."
-            )
-        except:
-            pass
-    elif update and hasattr(update, "message") and update.message:
-        try:
+        
+        elif parsed['type'] == 'profile':
+            await handle_profile(update, parsed['username'], user_is_admin)
+        
+        elif parsed['type'] == 'repository':
+            await handle_repository(update,parsed['repo_owner'],parsed['repo_name'],user_is_admin)
+                
+        elif parsed['type'] == 'invalid':
+            # Just show the message that InputParser provides
             await update.message.reply_text(
-                "❌ Something went wrong. Please try again."
+                parsed['message'],
+                parse_mode="MarkdownV2"
             )
+        else:
+            # Handle other invalid inputs
+            await update.message.reply_text(
+                parsed.get('message', get_invalid_input_message()),
+                parse_mode="Markdown"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in handle_text: {e}", exc_info=True)
+        await update.message.reply_text("❌ An error occurred. Please try again.")
+
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle all callback queries"""
+    if not update.callback_query:
+        return
+    
+    query = update.callback_query
+    data = query.data
+    
+    logger.info(f"Callback query received: {data}")
+    
+    try:
+        await query.answer()
+        
+        # Route to different handlers based on callback data
+        if data == "start":
+            await start_command(update, context)
+        elif data == "help_menu":
+            await help_command(update, context)
+        elif data == "about_info":
+            await about_command(update, context)
+        elif data == "developer_info":
+            await developer_command(update, context)
+        elif data == "trending_menu":
+            await trending_command(update, context)
+        elif data == "show_logs" and is_admin(query.from_user.username if query.from_user.username else None):
+            await logs_command(update, context)
+        else:
+            await query.message.edit_text("🚧 Feature coming soon!", parse_mode="Markdown")
+            
+    except Exception as e:
+        logger.error(f"Error handling callback {data}: {e}", exc_info=True)
+        try:
+            await query.message.edit_text("❌ An error occurred. Please try again.")
         except:
             pass
 
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle errors"""
+    logger.error(f"Update {update} caused error {context.error}", exc_info=True)
 
 def main():
     """Start the bot"""
     if not BOT_TOKEN:
-        print("❌ BOT_TOKEN not found in .env file!")
+        logger.error("BOT_TOKEN not found in environment variables")
         return
-
-    # Create application
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    # Add error handler
-    app.add_error_handler(error_handler)
-
-    # Add command handlers
-    app.add_handler(CommandHandler("start", command_router.handle_start))
-    app.add_handler(CommandHandler("help", command_router.handle_help))
-    app.add_handler(CommandHandler("trending", command_router.handle_trending))
-    app.add_handler(CommandHandler("user", command_router.handle_profile))
-    app.add_handler(
-        CommandHandler("profile", command_router.handle_profile)
-    )  # Alternative command
-
-    # Add callback and message handlers
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    print("🚀 GitScope Bot v2.0 started!")
-    print("⏹️  Press Ctrl+C to stop")
-
+    
+    logger.info(f"Starting GitScope Bot with token: {BOT_TOKEN[:10]}...")
+    
     try:
-        app.run_polling(drop_pending_updates=True)
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-        print("\n🛑 Bot stopped by user")
-    except Exception as e:
-        logger.error(f"Bot crashed: {str(e)}")
-        print(f"\n❌ Bot crashed: {str(e)}")
-    finally:
-        logger.info("Bot shutdown complete")
-        print("👋 Bot shutdown complete")
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        # Add handlers
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("trending", trending_command))
+        application.add_handler(CommandHandler("developer", developer_command))
+        application.add_handler(CommandHandler("about", about_command))
+        application.add_handler(CommandHandler("logs", logs_command))
+        
+        # Callback query handler
+        application.add_handler(CallbackQueryHandler(handle_callback_query))
+        
+        # Text message handler
+        application.add_handler(MessageHandler(filters.TEXT, handle_text))
+        
+        # Error handler
+        application.add_error_handler(error_handler)
+        
+        logger.info("Bot handlers registered successfully")
+        logger.info("Starting polling...")
+        
+        # Run the bot
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # application.run_polling(drop_pending_updates=True)
+        # application.run_polling()
 
+        logger.info("Bot is running...")
+        
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

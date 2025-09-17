@@ -1,14 +1,21 @@
 from datetime import datetime, timezone
-from telegram.helpers import escape_markdown
 
 def _escape_markdown_v2(text: str) -> str:
     """Escapes characters that have special meaning in MarkdownV2."""
+    if text is None:
+        return ""
+    
+    text = str(text)  # Convert to string if not already
     special_chars = (
-        '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{ ', '}', '.', '!'
+        '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', "'"
     )
     for char in special_chars:
         text = text.replace(char, f'\\{char}')
     return text
+
+def escape_text(text: str) -> str:
+    """Public function to escape text for MarkdownV2"""
+    return _escape_markdown_v2(text)
 
 def humanize_date(date_string):
     """Convert ISO date string to human-readable format"""
@@ -118,7 +125,7 @@ def format_repo_info(repo_data, is_admin_repo: bool = False):
         return "❌ Repository information not available"
 
     # Safely get values with defaults
-    full_name = escape_markdown(repo_data.get('full_name', 'Unknown'), 2)
+    full_name = escape_text(repo_data.get('full_name', 'Unknown'))
     description = repo_data.get('description')
     language = repo_data.get('language')
     license_info = repo_data.get('license')
@@ -128,14 +135,14 @@ def format_repo_info(repo_data, is_admin_repo: bool = False):
     if description:
         if len(description) > 200:
             description = description[:200] + "..."
-        description = escape_markdown(description, 2)
+        description = escape_text(description)
     else:
         description = "_No description available_"
 
     # Handle language
     if language:
         lang_emoji = get_language_emoji(language)
-        language_text = f"{lang_emoji} {escape_markdown(language, 2)}"
+        language_text = f"{lang_emoji} {escape_text(language)}"
     else:
         language_text = "📝 _Not specified_"
 
@@ -143,7 +150,7 @@ def format_repo_info(repo_data, is_admin_repo: bool = False):
     if license_info:
         license_name = license_info.get('name', 'Unknown')
         license_emoji = get_license_emoji(license_name)
-        license_text = f"{license_emoji} {escape_markdown(license_name, 2)}"
+        license_text = f"{license_emoji} {escape_text(license_name)}"
     else:
         license_text = "❌ _No license_"
 
@@ -193,7 +200,7 @@ def format_repo_info(repo_data, is_admin_repo: bool = False):
 
     # Add homepage if available
     if homepage:
-        homepage_escaped = escape_markdown(homepage, 2)
+        homepage_escaped = escape_text(homepage)
         info += f"🌐 Homepage: [{homepage_escaped}]({homepage})\n"
 
     # Add GitHub link
@@ -203,7 +210,7 @@ def format_repo_info(repo_data, is_admin_repo: bool = False):
 
     # Add default branch info
     default_branch = repo_data.get('default_branch', 'main')
-    info += f"\n🌿 Default branch: `{escape_markdown(default_branch, 2)}`"
+    info += f"\n🌿 Default branch: `{escape_text(default_branch)}`"
 
     # Add admin specific badge and styling
     if is_admin_repo:
@@ -240,7 +247,7 @@ def format_commit_message(message):
     if len(first_line) > 80:
         first_line = first_line[:77] + "..."
 
-    return escape_markdown(first_line, 2)
+    return escape_text(first_line)
 
 def get_topic_emojis(topics):
     """Get appropriate emojis for repository topics"""
@@ -270,7 +277,7 @@ def get_topic_emojis(topics):
     result = []
     for topic in topics[:5]:  # Limit to 5 topics
         emoji = topic_emojis.get(topic.lower(), '🏷️')
-        result.append(f"{emoji} {escape_markdown(topic, 2)}")
+        result.append(f"{emoji} {escape_text(topic)}")
 
     return result
 
@@ -314,7 +321,7 @@ def format_user_link(user_data):
     if not user_data:
         return "_Unknown user_"
 
-    login = escape_markdown(user_data.get('login', 'Unknown'), 2)
+    login = escape_text(user_data.get('login', 'Unknown'))
     html_url = user_data.get('html_url', '')
 
     if html_url:
@@ -322,6 +329,81 @@ def format_user_link(user_data):
     else:
         return login
 
+def format_profile_info(profile_data):
+    """Format user profile information"""
+    if not profile_data:
+        return "❌ Profile information not available"
+
+    login = escape_text(profile_data.get('login', 'Unknown'))
+    name = profile_data.get('name')
+    bio = profile_data.get('bio')
+    company = profile_data.get('company')
+    location = profile_data.get('location')
+    blog = profile_data.get('blog')
+    twitter = profile_data.get('twitter_username')
+    
+    # Build profile info
+    info = f"👤 **{login}**\n"
+    
+    if name and name != login:
+        info += f"📝 {escape_text(name)}\n"
+    
+    info += "\n"
+    
+    if bio:
+        bio_text = escape_text(bio[:200] + "..." if len(bio) > 200 else bio)
+        info += f"💭 {bio_text}\n\n"
+    
+    # Stats
+    followers = format_number(profile_data.get('followers', 0))
+    following = format_number(profile_data.get('following', 0))
+    repos = format_number(profile_data.get('public_repos', 0))
+    gists = format_number(profile_data.get('public_gists', 0))
+    
+    info += (
+        f"📊 **Statistics:**\n"
+        f"👥 `{followers}` followers • `{following}` following\n"
+        f"📚 `{repos}` repositories • `{gists}` gists\n\n"
+    )
+    
+    # Additional info
+    info += "ℹ️ **Details:**\n"
+    
+    if company:
+        info += f"🏢 Company: {escape_text(company)}\n"
+    
+    if location:
+        info += f"📍 Location: {escape_text(location)}\n"
+    
+    if blog:
+        blog_escaped = escape_text(blog)
+        info += f"🌐 Website: [{blog_escaped}]({blog})\n"
+    
+    if twitter:
+        info += f"🐦 Twitter: [@{escape_text(twitter)}](https://twitter.com/{twitter})\n"
+    
+    info += f"📅 Joined: `{humanize_date(profile_data.get('created_at', ''))}`\n"
+    
+    # GitHub profile link
+    html_url = profile_data.get('html_url', '')
+    if html_url:
+        info += f"\n🔗 [View on GitHub]({html_url})"
+    
+    return info
+
+def safe_error_message(message: str) -> str:
+    """Safely format error message for Telegram"""
+    if not message:
+        return "❌ An error occurred"
+    
+    # Remove technical details and escape special characters
+    clean_msg = str(message).replace("Can't parse entities:", "").strip()
+    clean_msg = _escape_markdown_v2(clean_msg)
+    
+    # Keep it simple and user-friendly
+    if len(clean_msg) > 100:
+        return "❌ Unable to process request\\. Please try again\\."
+    
 def safe_get(data, *keys, default="N/A"):
     """Safely get nested dictionary values"""
     for key in keys:

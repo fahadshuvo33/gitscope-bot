@@ -1,244 +1,325 @@
+# loading.py
 import asyncio
-from telegram import InlineKeyboardMarkup
-from telegram.error import BadRequest
-import logging
+import random
+from typing import Optional
+from telegram import Message, Update, InlineKeyboardMarkup
+from telegram.error import TelegramError
+from telegram.ext import ContextTypes
+import functools
 
-logger = logging.getLogger(__name__)
-
-# ═══════════════════════════════════════════════════════════════════
-#                    SIMPLE BALANCED LOADING ANIMATION
-# ═══════════════════════════════════════════════════════════════════
-
-DEFAULT_ANIMATION = "bounce"
-ANIMATION_SPEED = 0.7
-
-class LoadingAnimation:
+class LoadingAnimator:
+    """Advanced loading animator with colorful styles"""
+    
+    ANIMATIONS = {
+        # Colorful emoji animations
+        'rainbow': ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "🟤", "⚫", "⚪"],
+        'hearts': ["❤️", "🧡", "💛", "💚", "💙", "💜", "🤎", "🖤", "🤍", "💗", "💖", "💕"],
+        'stars': ["⭐", "🌟", "✨", "💫", "🌠", "🌌", "🌃", "🌆", "🌇"],
+        'gems': ["💎", "💠", "🔷", "🔹", "🔸", "🔶", "♦️", "🔻", "🔺"],
+        'flowers': ["🌸", "🌺", "🌻", "🌼", "🌷", "🌹", "🌵", "🌴", "🌿"],
+        'fruits': ["🍎", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍒", "🍑"],
+        'planets': ["🌍", "🌎", "🌏", "🌐", "🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"],
+        'weather': ["☀️", "🌤️", "⛅", "🌥️", "☁️", "🌦️", "🌧️", "⛈️", "🌩️", "🌨️", "❄️", "🌈"],
+        'fire': ["🔥", "🎆", "🎇", "✨", "🎉", "🎊", "🪩", "💥", "⚡"],
+        'water': ["💧", "💦", "🌊", "🏄", "🏊", "🚣", "⛵", "🚤", "🛟"],
+        'nature': ["🌱", "🌿", "🍀", "🌾", "🌳", "🌲", "🌴", "🍂", "🍁", "🍃"],
+        'animals': ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯"],
+        'butterflies': ["🦋", "🐛", "🪲", "🐞", "🪳", "🪰", "🪱", "🦟", "🦗"],
+        'ocean': ["🐠", "🐟", "🐡", "🦈", "🐳", "🐋", "🐬", "🦭", "🐙", "🦑"],
+        'birds': ["🦅", "🦆", "🦉", "🦇", "🦚", "🦜", "🦢", "🦩", "🕊️", "🐦"],
+        
+        # Colorful geometric animations
+        'circles': ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚫", "⚪", "🟤"],
+        'squares': ["🟥", "🟧", "🟨", "🟩", "🟦", "🟪", "⬛", "⬜", "🟫"],
+        'diamonds': ["💠", "🔷", "🔹", "🔸", "🔶", "♦️", "💎", "🔻", "🔺"],
+        
+        # Animated sequences
+        'rocket': ["🚀", "✨", "💫", "🌟", "⭐", "🌠", "🌌", "🪐", "🌍"],
+        'magic': ["🎩", "🪄", "✨", "🎆", "🎇", "🎉", "🎊", "🎭", "🎪"],
+        'music': ["🎵", "🎶", "🎼", "🎹", "🎸", "🎺", "🎷", "🥁", "🎻"],
+        'sports': ["⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉", "🎱", "🏓"],
+        'food': ["🍕", "🍔", "🍟", "🌭", "🍿", "🧂", "🥓", "🥚", "🧈"],
+        'drinks': ["☕", "🍵", "🧃", "🥤", "🧋", "🍺", "🍻", "🥂", "🍷"],
+        'celebration': ["🎈", "🎆", "🎇", "✨", "🎉", "🎊", "🎁", "🎀", "🪅"],
+        
+        # Moving patterns
+        'wave_color': ["🟦", "🟦🟦", "🟦🟦🟦", "🟦🟦", "🟦"],
+        'pulse': ["•", "◉", "◎", "◉", "•"],
+        'loading_dots': ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+        'bounce_color': ["🔵", "🔵⚪", "🔵⚪⚪", "⚪🔵⚪", "⚪⚪🔵"],
+        
+        # Tech themed
+        'tech': ["💻", "🖥️", "📱", "⌨️", "🖱️", "💾", "💿", "📀", "🔌"],
+        'gaming': ["🎮", "🕹️", "👾", "🎯", "🎲", "🃏", "🀄", "🎴", "🎰"],
+        
+        # Seasonal
+        'winter': ["❄️", "☃️", "⛄", "🎿", "🏂", "⛷️", "🏔️", "🎅", "🤶"],
+        'spring': ["🌸", "🌼", "🌻", "🌺", "🌷", "🌹", "🌵", "🌾", "🌿"],
+        'summer': ["☀️", "🌞", "🏖️", "🏝️", "⛱️", "🏄", "🏊", "🤿", "🌊"],
+        'autumn': ["🍂", "🍁", "🍃", "🌾", "🌰", "🍄", "🎃", "🌽", "🍊"],
+        
+        # Special effects
+        'sparkle': ["✨", "💫", "⭐", "🌟", "💥", "⚡", "🌠", "🎆", "🎇"],
+        'neon': ["🟣", "🔵", "🟢", "🟡", "🟠", "🔴", "🟣", "🔵", "🟢"],
+        'gradient': ["⬜", "🟦", "🟪", "🟣", "🔵", "🟢", "🟡", "🟠", "🔴"],
+    }
+    
+    # Define which animations look best together
+    COLORFUL_COMBINATIONS = [
+        ['rainbow', 'stars', 'sparkle'],
+        ['hearts', 'flowers', 'butterflies'],
+        ['planets', 'rocket', 'stars'],
+        ['ocean', 'water', 'weather'],
+        ['fire', 'magic', 'celebration'],
+        ['gems', 'diamonds', 'sparkle'],
+        ['neon', 'gradient', 'circles'],
+        ['fruits', 'flowers', 'nature'],
+        ['music', 'celebration', 'magic'],
+        ['gaming', 'tech', 'neon'],
+    ]
+    
     def __init__(self):
-        # Simple icon transitions for smooth loading effect
-        self.animations = {
-            "dots": ["⏳", "⌛", "⏳", "⌛"],
-            "spinner": ["🔄", "🔃", "🔄", "🔃"],
-            "pulse": ["🔵", "🔷", "🔹", "🔷"],
-            "wave": ["🌊", "〰️", "🌊", "〰️"],
-            "stars": ["⭐", "🌟", "✨", "🌟"],
-            "progress": ["▱", "▰", "▱", "▰"],
-            "bounce": ["⚡", "💥", "⚡", "💥"],
-            "fire": ["🔥", "🌋", "🔥", "🌋"],
-            "rocket": ["🚀", "✨", "🚀", "✨"],
-            "magic": ["🎭", "✨", "🎭", "✨"],
-            "clock": ["🕐", "🕑", "🕒", "🕓"],
-            "heart": ["💖", "💕", "💖", "💕"],
-            "rainbow": ["🌈", "🌟", "🌈", "🌟"],
-            "tech": ["⚙️", "🔧", "⚙️", "🔧"],
-            "diamond": ["💎", "✨", "💎", "✨"],
-        }
-
-    def _find_tip_line(self, message_text):
-        """Find the tip line and return its index and content"""
-        lines = message_text.split('\n')
-
-        for i, line in enumerate(lines):
-            if "💡" in line and "tip" in line.lower():
-                return i, line
-
-        # If no tip line found, return last non-empty line
-        for i in range(len(lines) - 1, -1, -1):
-            if lines[i].strip():
-                return i, lines[i]
-
-        return -1, ""
-
-    def _create_balanced_loading_line(self, icon, action, page):
-        """Create balanced loading line: 2 icons + text + 2 icons"""
-
-        page_text = f" page {page}" if page else ""
-        center_text = f"{action}{page_text}..."
-
-        # Simple balanced format: icon icon text icon icon
-        loading_line = f"{icon}{icon} {center_text} {icon}{icon}"
-
-        return loading_line
-
-    def _replace_tip_line(self, message_text, new_tip_line):
-        """Replace tip line with new content"""
-        lines = message_text.split('\n')
-        tip_index, original_tip = self._find_tip_line(message_text)
-
-        if tip_index >= 0:
-            lines[tip_index] = new_tip_line
+        self.active_animations = {}
+        self.should_stop = {}
+    
+    def get_random_colorful_styles(self, count: int = 3) -> list:
+        """Get random colorful animation styles that work well together"""
+        # Pick a random combination
+        combination = random.choice(self.COLORFUL_COMBINATIONS)
+        # Return the requested number of styles from this combination
+        return combination[:count]
+    
+    def get_random_styles(self, count: int = 3) -> list:
+        """Get random animation styles with preference for colorful ones"""
+        # 70% chance to get a pre-defined colorful combination
+        if random.random() < 0.7:
+            return self.get_random_colorful_styles(count)
         else:
-            lines.append(new_tip_line)
-
-        return '\n'.join(lines)
-
-    async def show_loading(
-        self,
-        message,
-        title,
-        action="Loading",
-        page=None,
-        animation_type=None,
-        duration=None,
-        preserve_content=True,
-    ):
-        """Show balanced loading animation with icon transitions"""
-
-        final_animation = animation_type or DEFAULT_ANIMATION
-        original_text = message.text if hasattr(message, "text") and message.text else f"{title}\n\n💡 **Tip:** Loading..."
-
-        # Create animation task
-        animation_task = asyncio.create_task(
-            self._animate_balanced(
-                message, original_text, action, page, final_animation, duration
-            )
-        )
-
-        return animation_task
-
-    async def _animate_balanced(self, message, original_text, action, page, animation_type, duration):
-        """Animate with balanced layout and smooth icon transitions"""
-
-        frames = self.animations.get(animation_type, self.animations[DEFAULT_ANIMATION])
+            # Otherwise pick randomly from all animations
+            all_styles = list(self.ANIMATIONS.keys())
+            count = min(count, len(all_styles))
+            return random.sample(all_styles, count)
+    
+    async def animate_multiple(
+        self, 
+        message: Message, 
+        text: str = "Loading",
+        styles: Optional[list] = None,
+        append_to_text: bool = True,
+        preserve_keyboard: bool = True,
+        speed: float = 0.3
+    ) -> None:
+        """Animate loading with multiple colorful styles"""
+        message_id = message.message_id
+        self.active_animations[message_id] = True
+        self.should_stop[message_id] = False
+        
+        # Get original content
+        original_text = message.text or message.caption or ""
+        original_keyboard = message.reply_markup if preserve_keyboard else None
+        
+        # Select animation styles
+        if styles is None:
+            styles = self.get_random_styles(3)
+        
         frame_index = 0
-        start_time = asyncio.get_event_loop().time()
-
+        
         try:
-            while True:
-                # Check duration
-                if duration and (asyncio.get_event_loop().time() - start_time) > duration:
+            while self.active_animations.get(message_id, False) and not self.should_stop.get(message_id, False):
+                # Build animated text with multiple animations
+                animation_parts = []
+                for i, style in enumerate(styles):
+                    frames = self.ANIMATIONS.get(style, self.ANIMATIONS['rainbow'])
+                    # Offset each animation slightly for more dynamic effect
+                    offset_index = (frame_index + i * 2) % len(frames)
+                    frame = frames[offset_index]
+                    animation_parts.append(frame)
+                
+                # Join animations with some spacing
+                all_animations = " ".join(animation_parts)
+                
+                # Build final text
+                if append_to_text and original_text.strip() and original_text != ".":
+                    animated_text = f"{original_text}\n\n🎨 {text} {all_animations}"
+                else:
+                    animated_text = f"🎨 {text} {all_animations}"
+                
+                # Check if we should stop before editing
+                if self.should_stop.get(message_id, False):
                     break
-
-                # Get current icon for smooth transition
-                current_icon = frames[frame_index % len(frames)]
-
-                # Create balanced loading line
-                loading_line = self._create_balanced_loading_line(
-                    current_icon, action, page
-                )
-
-                # Replace tip line
-                animated_text = self._replace_tip_line(original_text, loading_line)
-
-                # Update message
+                
                 try:
                     await message.edit_text(
                         animated_text,
                         parse_mode="Markdown",
-                        reply_markup=(
-                            message.reply_markup
-                            if hasattr(message, "reply_markup")
-                            else None
-                        ),
-                        disable_web_page_preview=True,
+                        reply_markup=original_keyboard,
+                        disable_web_page_preview=True
                     )
-                except BadRequest as e:
-                    if "message is not modified" in str(e).lower():
-                        pass
-                    else:
-                        logger.warning(f"Loading animation error: {e}")
-                        break
-                except Exception as e:
-                    logger.error(f"Animation error: {e}")
-                    break
-
-                # Wait and advance to next frame for smooth transition
-                await asyncio.sleep(ANIMATION_SPEED)
+                except TelegramError as e:
+                    if "message is not modified" not in str(e).lower():
+                        print(f"Animation error: {e}")
+                
                 frame_index += 1
+                await asyncio.sleep(speed)
+                
+        finally:
+            self.active_animations[message_id] = False
+            if message_id in self.should_stop:
+                del self.should_stop[message_id]
+    
+    def stop(self, message_id: int):
+        """Stop animation for a specific message"""
+        self.should_stop[message_id] = True
+        self.active_animations[message_id] = False
 
-        except asyncio.CancelledError:
-            pass
+# Global animator instance
+animator = LoadingAnimator()
 
-    async def show_static_loading(
-        self, message, title, action="Loading", page=None, preserve_content=True,
-        animation_type=None
-    ):
-        """Show static balanced loading"""
-
-        final_animation = animation_type or DEFAULT_ANIMATION
-        original_text = message.text if hasattr(message, "text") and message.text else f"{title}\n\n💡 **Tip:** Loading..."
-
-        # Get first icon
-        static_icon = self.animations.get(final_animation, self.animations[DEFAULT_ANIMATION])[0]
-
-        # Create balanced loading line
-        loading_line = self._create_balanced_loading_line(
-            static_icon, action, page
+# Simple wrapper for updating message after animation
+async def update_with_animation(
+    message: Message,
+    final_text: str,
+    loading_text: str = "Loading",
+    keyboard: Optional[InlineKeyboardMarkup] = None,
+    parse_mode: str = "MarkdownV2",
+    animation_duration: float = 1.5,
+    styles: Optional[list] = None
+):
+    """Show colorful animation then update with final content"""
+    # Start animation
+    animation_task = asyncio.create_task(
+        animator.animate_multiple(
+            message=message,
+            text=loading_text,
+            styles=styles,
+                        speed=0.25
         )
-
-        # Replace tip line
-        loading_text = self._replace_tip_line(original_text, loading_line)
-
-        # Update message
-        try:
-            await message.edit_text(
-                loading_text,
-                parse_mode="Markdown",
-                reply_markup=(
-                    message.reply_markup if hasattr(message, "reply_markup") else None
-                ),
-                disable_web_page_preview=True,
-            )
-        except Exception as e:
-            logger.error(f"Static loading error: {e}")
-
-    async def show_error(
-        self,
-        message,
-        title,
-        error_type="Network Error",
-        details=None,
-        preserve_content=False,
-    ):
-        """Show balanced error message"""
-
-        original_text = message.text if hasattr(message, "text") and message.text else f"{title}\n\n💡 **Tip:** Something went wrong"
-
-        # Create balanced error line
-        error_line = f"❌❌ {error_type} - Try again ❌❌"
-
-        # Replace tip line
-        error_result = self._replace_tip_line(original_text, error_line)
-
-        return error_result
-
-
-# Create global instance
-loading_animation = LoadingAnimation()
-
-# Simple convenience functions
-async def show_loading(
-    message,
-    title,
-    action="Loading",
-    page=None,
-    animation_type=None,
-    preserve_content=True,
-):
-    """Show balanced loading animation: icon icon text icon icon"""
-    return await loading_animation.show_loading(
-        message, title, action, page, animation_type, preserve_content
+    )
+    
+    # Wait for specified duration
+    await asyncio.sleep(animation_duration)
+    
+    # Stop animation
+    animator.stop(message.message_id)
+    
+    # Wait a bit for animation to stop
+    await asyncio.sleep(0.2)
+    
+    # Cancel the animation task
+    animation_task.cancel()
+    try:
+        await animation_task
+    except asyncio.CancelledError:
+        pass
+    
+    # Now update with final content
+    await message.edit_text(
+        final_text,
+        parse_mode=parse_mode,
+        reply_markup=keyboard,
+        disable_web_page_preview=True
     )
 
-async def show_static_loading(
-    message, title, action="Loading", page=None, preserve_content=True,
-    animation_type=None
+# Simplified decorator
+def with_loading(
+    text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘",
+    duration: float = 1.0,
+    styles: Optional[list] = None  # None means random colorful combination
 ):
-    """Show static balanced loading"""
-    await loading_animation.show_static_loading(
-        message, title, action, page, preserve_content, animation_type
-    )
+    """Simplified loading decorator with colorful animations"""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            message = None
+            
+            try:
+                # Get or create message
+                if update.callback_query:
+                    await update.callback_query.answer()
+                    message = update.callback_query.message
+                elif update.message:
+                    message = await update.message.reply_text(".")
+                
+                if not message:
+                    return await func(update, context, *args, **kwargs)
+                
+                # Store in context
+                context.user_data['_loading_message'] = message
+                context.user_data['_animation_done'] = False
+                
+                # Start animation in background
+                async def run_animation():
+                    await animator.animate_multiple(
+                        message=message,
+                        text=text,
+                        styles=styles,
+                        speed=0.25
+                    )
+                    context.user_data['_animation_done'] = True
+                
+                animation_task = asyncio.create_task(run_animation())
+                
+                # Wait for the specified duration
+                await asyncio.sleep(duration)
+                
+                # Stop animation
+                animator.stop(message.message_id)
+                
+                # Wait for animation to actually stop
+                await asyncio.sleep(0.3)
+                
+                # Cancel task if still running
+                if not animation_task.done():
+                    animation_task.cancel()
+                    try:
+                        await animation_task
+                    except asyncio.CancelledError:
+                        pass
+                
+                # Now run the actual function
+                result = await func(update, context, *args, **kwargs)
+                
+                return result
+                
+            finally:
+                # Cleanup
+                if '_loading_message' in context.user_data:
+                    del context.user_data['_loading_message']
+                if '_animation_done' in context.user_data:
+                    del context.user_data['_animation_done']
+        
+        return wrapper
+    
+    # Allow using decorator without parentheses
+    if callable(text):
+        func = text
+        text = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘"
+        duration = 1.0
+        return decorator(func)
+    
+    return decorator
 
-async def show_error(
-    message,
-    title,
-    error_type="Network Error",
-    details=None,
-    preserve_content=False,
-):
-    """Show balanced error message"""
-
-    # Always create new error content, don't preserve loading state
-    error_text = f"{title}\n\n"
-    error_text += f"❌❌ {error_type} - Please try again ❌❌"
-
-    return error_text
+# Pre-defined colorful loading styles for easy use
+class LoadingStyles:
+    """Pre-defined colorful loading style combinations"""
+    
+    RAINBOW = ['rainbow', 'stars', 'sparkle']
+    LOVE = ['hearts', 'flowers', 'butterflies']
+    SPACE = ['planets', 'rocket', 'stars']
+    OCEAN = ['ocean', 'water', 'weather']
+    FIRE = ['fire', 'magic', 'celebration']
+    GEMS = ['gems', 'diamonds', 'sparkle']
+    NEON = ['neon', 'gradient', 'circles']
+    NATURE = ['fruits', 'flowers', 'nature']
+    PARTY = ['music', 'celebration', 'magic']
+    TECH = ['gaming', 'tech', 'neon']
+    
+    @classmethod
+    def get_random(cls):
+        """Get a random pre-defined style"""
+        all_styles = [
+            cls.RAINBOW, cls.LOVE, cls.SPACE, cls.OCEAN, 
+            cls.FIRE, cls.GEMS, cls.NEON, cls.NATURE, 
+            cls.PARTY, cls.TECH
+        ]
+        return random.choice(all_styles)

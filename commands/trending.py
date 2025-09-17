@@ -4,19 +4,24 @@ from telegram.ext import ContextTypes
 import logging
 
 # Import the loading system
-from utils.loading import show_loading, show_static_loading
+# from utils.loading import withLoading
+from utils.db_logger import log_activity
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
 
+# @withLoading(style='fire', duration=1.0)
 async def trending_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /trending command with loading animation"""
+    
+    user = update.effective_user
+    user_id = user.username or f"user_{user.id}"
+    log_activity("INFO", "Trending menu accessed", user_id=user_id, command="trending")
     
     # Determine if this is from a callback or direct message
     if update.callback_query:
         query = update.callback_query
-        await query.answer()
         message = query.message
     else:
         # For direct command, create initial message
@@ -24,38 +29,6 @@ async def trending_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📈 **Trending Repositories**\n\n💡 **Tip:** Loading trending options...",
             parse_mode="Markdown"
         )
-    
-    # Show static loading first
-    try:
-        await show_static_loading(
-            message,
-            "📈 **Trending Repositories**",
-            "Loading language options",
-            preserve_content=True,
-            animation_type="fire",  # Fire animation for trending/hot content
-        )
-    except Exception as e:
-        logger.debug(f"Static loading skipped: {e}")
-    
-    # Start animated loading
-    loading_task = await show_loading(
-        message,
-        "📈 **Trending Repositories**",
-        "Preparing trending categories",
-        animation_type="fire",
-        preserve_content=True,
-    )
-    
-    # Brief wait for effect
-    await asyncio.sleep(1.0)
-    
-    # Stop loading animation gracefully
-    if loading_task and not loading_task.done():
-        loading_task.cancel()
-        try:
-            await loading_task
-        except asyncio.CancelledError:
-            pass
 
     # Language selection keyboard
     languages = [
@@ -81,7 +54,7 @@ async def trending_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lang_name, lang_code = languages[i + j]
                 row.append(
                     InlineKeyboardButton(
-                        lang_name, callback_data=f"trending_{lang_code}"
+                        lang_name, callback_data=f"trending_lang_{lang_code}"
                     )
                 )
         keyboard.append(row)

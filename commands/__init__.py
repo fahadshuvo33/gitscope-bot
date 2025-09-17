@@ -1,14 +1,18 @@
 from .start import start_command
 from .help import help_command
 from .trending import trending_command
-from .profile import profile_command
-from .router import command_router
+from .developer import developer_command
+from .about import about_command
+from .profile import handle_profile
+from .repo import handle_repository
 
 # Export all commands
 __all__ = [
     'start_command',
     'help_command',
     'trending_command',
-    'profile_command',
-    'command_router'
+    'developer_command',
+    "about_command",
+    "handle_profile",
+    "handle_repository"
 ]

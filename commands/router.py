@@ -3,11 +3,6 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import logging
 
-# Import features
-from features.about import about_handler
-from features.developer import developer_handler
-from features.trending_repos import trending_handler
-
 # Import commands
 from .start import start_command
 from .help import help_command
@@ -19,7 +14,17 @@ from profile.handler import ProfileHandler
 from features.repository import repository_handler
 
 # Import loading utilities
-from utils.loading import show_loading, show_static_loading
+from templates import get_loading_message
+
+async def show_loading(message, title, tip="Loading..."):
+    """Simple loading message replacement"""
+    await message.edit_text(f"{title}\n💡 {tip}")
+    return None
+
+async def show_static_loading(message, title, tip="Loading..."):
+    """Simple static loading replacement"""
+    await message.edit_text(f"{title}\n💡 {tip}")
+    return None
 
 logger = logging.getLogger(__name__)
 
