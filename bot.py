@@ -10,6 +10,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+from trending import register_trending_handlers 
 from dotenv import load_dotenv
 import os
 
@@ -22,8 +23,6 @@ ADMIN_TELEGRAM_USERNAME = os.getenv("ADMIN_TELEGRAM_USERNAME", "").lower()
 from utils.manager import utils
 from utils.db_logger import log_activity
 from utils.input_parser import InputParser
-# from utils.loading import update_content_with_loading
-# from utils.loading import withLoading
 from commands import about_command,start_command,developer_command,help_command,trending_command,handle_profile,handle_repository
 from admin import logs_command, handle_logs_callback, is_admin
 # Import templates
@@ -89,16 +88,28 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_repository(update,parsed['repo_owner'],parsed['repo_name'],user_is_admin)
                 
         elif parsed['type'] == 'invalid':
-            # Just show the message that InputParser provides
+            # Create a keyboard with a help button
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🆘 Help Menu", callback_data="help_menu")]
+            ])
+            
+            # Show the error message with help button
             await update.message.reply_text(
                 parsed['message'],
-                parse_mode="MarkdownV2"
+                parse_mode="MarkdownV2",
+                reply_markup=keyboard
             )
+        
         else:
-            # Handle other invalid inputs
+            # Handle other invalid inputs with help button
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🆘 Help Menu", callback_data="help_menu")]
+            ])
+            
             await update.message.reply_text(
                 parsed.get('message', get_invalid_input_message()),
-                parse_mode="Markdown"
+                parse_mode="MarkdownV2",
+                reply_markup=keyboard
             )
             
     except Exception as e:
@@ -131,6 +142,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await trending_command(update, context)
         elif data == "show_logs" and is_admin(query.from_user.username if query.from_user.username else None):
             await logs_command(update, context)
+        elif not data.startswith("trend_"):
+            await query.message.edit_text("🚧 Feature coming soon!", parse_mode="Markdown")
         else:
             await query.message.edit_text("🚧 Feature coming soon!", parse_mode="Markdown")
             
@@ -166,6 +179,7 @@ def main():
         application.add_handler(CommandHandler("logs", logs_command))
         
         # Callback query handler
+        register_trending_handlers(application)
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         
         # Text message handler

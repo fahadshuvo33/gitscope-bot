@@ -1,3 +1,4 @@
+# start.py
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import logging
@@ -6,11 +7,11 @@ import os
 from templates import get_welcome_message, get_error_message
 from admin import is_admin
 from utils.db_logger import log_activity
-# from utils.loading import withLoading
+from utils.loading import with_loading
 
 logger = logging.getLogger(__name__)
 
-# @withLoading
+@with_loading
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command - simplified"""
     
@@ -24,7 +25,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = [
         [
             InlineKeyboardButton("📈 Trending", callback_data="trending_menu"),
-            InlineKeyboardButton("🇭🇪 Help", callback_data="help_menu")
+            InlineKeyboardButton("🆘 Help", callback_data="help_menu")
         ],
         [
             InlineKeyboardButton("💻 Developer", callback_data="developer_info"),
@@ -39,48 +40,47 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup(buttons)
 
     try:
-        # Get welcome text directly
+        # Get welcome text
         welcome_text = get_welcome_message(username=user_name)
 
-        if update.callback_query:
-            await update.callback_query.answer()
-            await update.callback_query.edit_message_text(
+        # Use the loading message from context
+        message = context.user_data.get('_loading_message')
+        if message:
+            await message.edit_text(
                 welcome_text,
                 parse_mode="MarkdownV2",
-                reply_markup=keyboard
+                reply_markup=keyboard,
+                disable_web_page_preview=True
             )
         else:
-            await update.message.reply_text(
-                welcome_text,
-                parse_mode="MarkdownV2",
-                reply_markup=keyboard
-            )
+            # Fallback if no loading message (shouldn't happen with decorator)
+            if update.callback_query:
+                await update.callback_query.answer()
+                await update.callback_query.message.edit_text(
+                    welcome_text,
+                    parse_mode="MarkdownV2",
+                    reply_markup=keyboard,
+                    disable_web_page_preview=True
+                )
+            else:
+                await update.message.reply_text(
+                    welcome_text,
+                    parse_mode="MarkdownV2",
+                    reply_markup=keyboard,
+                    disable_web_page_preview=True
+                )
 
     except Exception as e:
         logger.error(f"Error in start command: {e}")
-        try:
-            error_text = get_error_message("Start", str(e))
-            if update.callback_query:
-                await update.callback_query.edit_message_text(error_text, reply_markup=keyboard)
-            else:
-                await update.message.reply_text(error_text, reply_markup=keyboard)
-        except:
-            pass
+        message = context.user_data.get('_loading_message')
+        error_text = get_error_message("Start", str(e))
         
-# @withLoading
-async def handle_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle start-related callback queries"""
-    
-    if not update.callback_query:
-        return
-    
-    query = update.callback_query
-    data = query.data
-    
-    # Handle different start menu options
-    if data == "help_menu":
-        from .help import help_command
-        await help_command(update, context)
-    elif data == "trending_menu":
-        from .trending import trending_command
-        await trending_command(update, context)
+        if message:
+            await message.edit_text(
+                error_text,
+                parse_mode="MarkdownV2",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
+
+

@@ -8,6 +8,7 @@ from typing import Optional, Dict, List, Any, Callable
 from functools import lru_cache
 from dotenv import load_dotenv
 
+
 # Load environment variables
 load_dotenv()
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
@@ -474,45 +475,7 @@ async def fetch_user_starred(
         logger.error(f"Error fetching starred repos for {username}: {e}")
         return None
 
-async def fetch_trending_repos(
-    session: aiohttp.ClientSession,
-    language: Optional[str] = None,
-    since: str = "daily",
-    limit: int = 10
-) -> Optional[List[Dict]]:
-    """Fetch trending repositories (uses search API as GitHub doesn't have official trending API)"""
-    try:
-        # Build query for trending repos
-        query = "stars:>1"
-        if language:
-            query += f" language:{language}"
 
-        # Add date filter based on 'since' parameter
-        if since == "daily":
-            date_filter = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        elif since == "weekly":
-            date_filter = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-        else:  # monthly
-            date_filter = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-
-        query += f" created:>{date_filter}"
-
-        params = {
-            "q": query,
-            "sort": "stars",
-            "order": "desc",
-            "per_page": min(limit, 100)
-        }
-
-        data = await _make_request_with_retry(session, "/search/repositories", params=params, timeout=8)
-
-        if data and 'items' in data:
-            return data['items']
-
-        return None
-    except Exception as e:
-        logger.error(f"Failed to fetch trending repos: {e}")
-        return None
 
 # Rate limit and validation functions
 async def check_rate_limit(session: aiohttp.ClientSession) -> Optional[Dict]:

@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 import logging
 import asyncio
 from templates import get_about_info, get_error_message
-from utils.loading import with_loading, update_with_animation
+from utils.loading import with_loading
 
 logger = logging.getLogger(__name__)
 
@@ -45,29 +45,3 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 disable_web_page_preview=True
             )
 
-
-# Method 2: Using update_with_animation (more control)
-# async def about_command_alternative(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     """Alternative without decorator"""
-#     keyboard = InlineKeyboardMarkup([
-#         [InlineKeyboardButton("🏠 Back to Start", callback_data="start")]
-#     ])
-    
-#     # Get or create message
-#     if update.callback_query:
-#         await update.callback_query.answer()
-#         message = update.callback_query.message
-#     else:
-#         message = await update.message.reply_text(".")
-    
-#     # Get about text
-#     about_text = get_about_info()
-    
-#     # Show animation then update
-#     await update_with_animation(
-#         message=message,
-#         final_text=about_text,
-#         loading_text="Loading about information",
-#         keyboard=keyboard,
-#         animation_duration=2.0
-#     )

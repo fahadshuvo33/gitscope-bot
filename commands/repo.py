@@ -1,14 +1,16 @@
-# commands/repository.py
+# repository.py
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import logging
 from templates import get_repo_message, get_error_message
 from utils.manager import utils
 from utils.db_logger import log_activity
+from utils.loading import with_loading
 
 logger = logging.getLogger(__name__)
 
-async def handle_repository(update: Update, repo_owner: str, repo_name: str, is_admin: bool = False):
+@with_loading("📚 Loading repository")
+async def handle_repository(update: Update, context: ContextTypes.DEFAULT_TYPE, repo_owner: str, repo_name: str, is_admin: bool = False):
     """Handle GitHub repository requests"""
     user = update.effective_user
     user_id = user.username or f"user_{user.id}"
@@ -16,19 +18,18 @@ async def handle_repository(update: Update, repo_owner: str, repo_name: str, is_
     
     log_activity("INFO", f"Repository request: {repo_full_name}", user_id=user_id, command="repository")
     
-    loading_msg = await update.message.reply_text(
-        f"📚 Loading repository: {repo_full_name}...",
-        parse_mode="Markdown"
-    )
+    # Get loading message from context
+    loading_msg = context.user_data.get('_loading_message')
     
     try:
         repo_data = await utils.github_api.get_repository_info(repo_full_name)
         
         if not repo_data:
-            await loading_msg.edit_text(
-                f"❌ Repository '{repo_full_name}' not found",
-                parse_mode="Markdown"
-            )
+            if loading_msg:
+                await loading_msg.edit_text(
+                    f"❌ Repository '{repo_full_name}' not found",
+                    parse_mode="Markdown"
+                )
             return
         
         repo_text = get_repo_message(
@@ -46,11 +47,13 @@ async def handle_repository(update: Update, repo_owner: str, repo_name: str, is_
             [InlineKeyboardButton("🏠 Back to Start", callback_data="start")]
         ])
         
-        await loading_msg.edit_text(
-            repo_text,
-            parse_mode="MarkdownV2",
-            reply_markup=keyboard
-        )
+        if loading_msg:
+            await loading_msg.edit_text(
+                repo_text,
+                parse_mode="MarkdownV2",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
         
     except Exception as e:
         logger.error(f"Error loading repository {repo_full_name}: {e}", exc_info=True)
@@ -60,4 +63,10 @@ async def handle_repository(update: Update, repo_owner: str, repo_name: str, is_
             [InlineKeyboardButton("🏠 Back to Start", callback_data="start")]
         ])
         
-        await loading_msg.edit_text(error_text, reply_markup=keyboard)
+        if loading_msg:
+            await loading_msg.edit_text(
+                error_text,
+                parse_mode="MarkdownV2",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
