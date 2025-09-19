@@ -58,7 +58,7 @@ def format_period_selection_text(language_code: str, current_period: str) -> str
     )
     return text
 
-def format_repo_entry(repo: dict, index: int, show_language: bool = True) -> str:
+def format_repo_entry(repo: dict, index: int) -> str:
     """Format a single repository entry for display with enhanced styling"""
     try:
         # Get repo info
@@ -88,10 +88,9 @@ def format_repo_entry(repo: dict, index: int, show_language: bool = True) -> str
         fork_str = format_number(forks)
         watch_str = format_number(watchers)
         
-        # Enhanced formatting with repository name and GitHub link
-        text = f"**{index}\\. {escape_text(repo_name)}**\n"
+        # Enhanced formatting with copyable repository name and GitHub link
+        text = f"**{index}\\. `{repo_name}`**\n"
         text += f"🔗 [View on GitHub]({repo.get('html_url', '')})\n"
-        text += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         text += f"📝 _{escape_text(description)}_\n\n"
         
         # Stats line with better icons and spacing
@@ -103,20 +102,17 @@ def format_repo_entry(repo: dict, index: int, show_language: bool = True) -> str
         if watchers > 0:
             stats_line += f"  •  👁️ **{watch_str}** watching"
         
-        if show_language and language:
-            from .languages import get_language_emoji
-            lang_emoji = get_language_emoji(language)
-            stats_line += f"  •  {lang_emoji} **{escape_text(language)}**"
-        
-        text += stats_line + "\n"
+        text += stats_line + "\n\n"
         
         # Add a subtle separator for readability
-        text += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        text += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         
         return text
+        
     except Exception as e:
         logger.error(f"Error formatting repo: {e}")
-        return f"**{index}\\. ❌ Error formatting repository**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        return f"**{index}\\. ❌ Error formatting repository**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+
 
 def format_trending_header(language: str, period: str) -> str:
     """Format the header for trending results with enhanced styling"""
@@ -125,9 +121,8 @@ def format_trending_header(language: str, period: str) -> str:
     
     # Create a more visually appealing header
     header = f"🔥 **TRENDING {escape_text(lang_info['display'].upper())} REPOSITORIES** 🔥\n"
-    header += f"═══════════════════════════════════════════════════════════════\n"
-    header += f"{period_info['emoji']} {period_info['description']} Repositories on GitHub\n"
-    header += f"═══════════════════════════════════════════════════════════════\n\n"
+    header += f"{period_info['emoji']} {period_info['description']} Repositories on GitHub\n\n"
+    header += f"♠♤♠♤♠♤♠♤♠♤♠♤♠♤♠♤♠♤♠♤♠♤\n\n"
     
     return header
 
@@ -159,7 +154,7 @@ def format_error_message(error_type: str = "general") -> str:
             "• Your internet connection\n"
             "• GitHub's service status\n"
             "• Try again in a few moments\n\n"
-            "🔄 _Most connection issues resolve quickly_"
+            "🔄 Most connection issues resolve quickly"
         )
     elif error_type == "api":
         return (
@@ -168,7 +163,7 @@ def format_error_message(error_type: str = "general") -> str:
             "• This resets every hour\n"
             "• Try again later\n"
             "• Consider using different search terms\n\n"
-            "⏰ _Limits help keep the service fast for everyone_"
+            "⏰ Limits help keep the service fast for everyone"
         )
     else:
         return (
@@ -177,7 +172,7 @@ def format_error_message(error_type: str = "general") -> str:
             "• Please try again\n"
             "• If the problem persists, contact support\n"
             "• Check GitHub's status page\n\n"
-            "🔄 _We're working to resolve any issues quickly_"
+            "🔄 We're working to resolve any issues quickly"
         )
 
 def get_period_list() -> list:

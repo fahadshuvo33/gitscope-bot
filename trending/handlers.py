@@ -25,20 +25,32 @@ from utils.loading import with_loading
 
 logger = logging.getLogger(__name__)
 
-async def show_languages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show language selection menu"""
+# Show these 8 popular languages initially
+INITIAL_LANGUAGES = [
+    'python', 'javascript', 'typescript', 'java', 
+    'cpp', 'go', 'rust','kotlin', 'all'
+]
+
+async def show_languages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, show_all: bool = False):
+    """Show language selection menu with toggle between 8 and all languages"""
     user = update.effective_user
     user_id = user.username or f"user_{user.id}"
     
-    logger.info(f"Trending menu shown for {user_id}")
+    logger.info(f"Trending menu shown for {user_id} (show_all: {show_all})")
+    
+    # Determine which languages to show
+    if show_all:
+        languages_to_show = LANGUAGE_CODES
+    else:
+        languages_to_show = INITIAL_LANGUAGES
     
     # Create language buttons (3 columns)
     keyboard = []
-    for i in range(0, len(LANGUAGE_CODES), 3):
+    for i in range(0, len(languages_to_show), 3):
         row = []
         for j in range(3):
-            if i + j < len(LANGUAGE_CODES):
-                code = LANGUAGE_CODES[i + j]
+            if i + j < len(languages_to_show):
+                code = languages_to_show[i + j]
                 button_text = format_language_button(code)
                 row.append(
                     InlineKeyboardButton(
@@ -48,6 +60,16 @@ async def show_languages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
         if row:
             keyboard.append(row)
+    
+    # Add show all/show less toggle button
+    if show_all:
+        keyboard.append([
+            InlineKeyboardButton("📝 Show Less Languages", callback_data="trend_show_less")
+        ])
+    else:
+        keyboard.append([
+            InlineKeyboardButton("📋 Show More Languages", callback_data="trend_show_all")
+        ])
     
     # Add back button
     keyboard.append([
@@ -70,6 +92,20 @@ async def show_languages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=reply_markup
         )
 
+async def handle_show_all_languages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle show all languages request"""
+    query = update.callback_query
+    await query.answer()
+    
+    await show_languages_menu(update, context, show_all=True)
+
+async def handle_show_less_languages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle show less languages request"""
+    query = update.callback_query
+    await query.answer()
+    
+    await show_languages_menu(update, context, show_all=False)
+
 async def handle_language_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle language selection and show trending repos directly with weekly as default"""
     query = update.callback_query
@@ -86,8 +122,6 @@ async def handle_language_selection(update: Update, context: ContextTypes.DEFAUL
     
     # Directly call show_trending_repos with loading
     await _show_trending_repos_internal(update, context, language_code, current_period)
-
-# trending/handlers.py (continued)
 
 async def handle_period_change(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle period change request - show period selection menu"""
@@ -150,6 +184,7 @@ async def handle_period_selection(update: Update, context: ContextTypes.DEFAULT_
     
     # Show trending repos with new period
     await _show_trending_repos_internal(update, context, language_code, period)
+
 
 async def show_trending_repos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show the actual trending repositories - wrapper for callback"""
@@ -237,17 +272,16 @@ async def _show_trending_repos_internal(update: Update, context: ContextTypes.DE
             
             # Format the results
             text = format_trending_header(language_code, period)
-            
-            # Add repo entries with enhanced formatting (no summary)
+
+            # Add repo entries with enhanced formatting (no copy buttons needed now)
             for i, repo in enumerate(repos[:10], 1):
-                text += format_repo_entry(
-                    repo, 
-                    i, 
-                    show_language=(language_code == "all")
+                repo_text = format_repo_entry(
+                    repo,
+                    i
                 )
-                text += "\n"
-            
-            # Create simple keyboard with just period and navigation buttons
+                text += repo_text + "\n"
+
+            # Create simple keyboard (no copy buttons needed)
             keyboard = [
                 period_buttons,   # Period selection row
                 nav_buttons[:1],  # Refresh button row
@@ -320,6 +354,17 @@ def register_trending_handlers(app):
     app.add_handler(CallbackQueryHandler(
         handle_language_selection,
         pattern="^trend_lang_"
+    ))
+    
+    # Show all/less languages toggle
+    app.add_handler(CallbackQueryHandler(
+        handle_show_all_languages,
+        pattern="^trend_show_all$"
+    ))
+    
+    app.add_handler(CallbackQueryHandler(
+        handle_show_less_languages,
+        pattern="^trend_show_less$"
     ))
     
     # Period change request
