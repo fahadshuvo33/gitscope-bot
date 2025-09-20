@@ -1,3 +1,4 @@
+# utils/formatting.py
 from datetime import datetime, timezone
 
 def _escape_markdown_v2(text: str) -> str:
@@ -78,7 +79,6 @@ def get_license_emoji(license_name):
     }
     return license_emojis.get(license_name, '📄')
 
-
 def create_progress_bar(percentage, length=20):
     """Create a visual progress bar"""
     filled = int(percentage / 100 * length)
@@ -106,8 +106,6 @@ def format_commit_message(message):
         first_line = first_line[:77] + "..."
 
     return escape_text(first_line)
-
-
 
 def format_topics(topics):
     """Format repository topics with emojis"""
@@ -157,7 +155,6 @@ def format_user_link(user_data):
     else:
         return login
 
-
 def safe_error_message(message: str) -> str:
     """Safely format error message for Telegram"""
     if not message:
@@ -170,7 +167,7 @@ def safe_error_message(message: str) -> str:
     # Keep it simple and user-friendly
     if len(clean_msg) > 100:
         return "❌ Unable to process request\\. Please try again\\."
-    
+
 def safe_get(data, *keys, default="N/A"):
     """Safely get nested dictionary values"""
     for key in keys:
@@ -179,3 +176,94 @@ def safe_get(data, *keys, default="N/A"):
         else:
             return default
     return data if data is not None else default
+
+# ==================== ADMIN FORMATTING FUNCTIONS ====================
+
+def format_admin_header(username: str) -> str:
+    """Format admin profile header"""
+    return (
+        f"═══ 👑 **ADMIN PROFILE** 👑 ═══\n"
+        f"📋 **GitHub User:** `{username}`\n"
+        f"🏢 **Status:** Bot Administrator\n"
+        f"═══════════════════════════\n\n"
+    )
+
+def format_admin_footer() -> str:
+    """Format admin profile footer"""
+    return (
+        f"\n\n═══ 👑 **Admin Account** 👑 ═══\n"
+        f"• This is a bot administrator's profile\n"
+        f"• Enhanced monitoring capabilities\n"
+        f"• Priority support available"
+    )
+
+def format_admin_badge() -> str:
+    """Format admin badge"""
+    return "👑 **ADMIN**"
+
+def add_admin_context(content: str, username: str) -> str:
+    """Add admin context to any content"""
+    header = format_admin_header(username)
+    footer = format_admin_footer()
+    return f"{header}{content}{footer}"
+
+# ==================== LOADING AND ERROR FUNCTIONS ====================
+
+def format_loading_text(action: str) -> str:
+    """Format loading text"""
+    return f"💫 {action}..."
+
+def format_error_text(error_msg: str) -> str:
+    """Format error text"""
+    return f"❌ {error_msg}"
+
+def format_success_text(success_msg: str) -> str:
+    """Format success text"""
+    return f"✅ {success_msg}"
+
+def format_tip_text(tip: str) -> str:
+    """Format tip text"""
+    return f"💡 **Tip:** {tip}"
+
+def format_content_with_loading(original_text: str, action: str) -> str:
+    """Add loading text to existing content"""
+    return f"{original_text}\n\n{format_loading_text(action)}"
+
+def format_content_with_error(original_text: str, error_msg: str) -> str:
+    """Add error text to existing content"""
+    return f"{original_text}\n\n{format_error_text(error_msg)} - Try again"
+
+# ==================== UTILITY FUNCTIONS ====================
+
+def extract_username_from_action(action: str) -> str:
+    """Extract username from callback action"""
+    prefixes = [
+        "user_repos_", "user_starred_", "user_followers_",
+        "user_following_", "user_stats_", "show_avatar_",
+        "refresh_user_", "refresh_avatar_"
+    ]
+    
+    for prefix in prefixes:
+        if action.startswith(prefix):
+            username = action.replace(prefix, "").split("_page_")[0]
+            return username
+    
+    return "Unknown"
+
+def get_loading_texts() -> dict:
+    """Get loading text mappings for different actions"""
+    return {
+        'user_repos_': "Loading repositories",
+        'user_starred_': "Loading starred repos", 
+        'user_followers_': "Loading followers",
+        'user_following_': "Loading following",
+        'user_stats_': "Loading stats",
+        'show_avatar_': "Loading avatar",
+        'refresh_user_': "Refreshing profile",
+        'refresh_avatar_': "Refreshing avatar",
+    }
+
+def get_loading_text_for_action(prefix: str) -> str:
+    """Get appropriate loading text for action prefix"""
+    loading_texts = get_loading_texts()
+    return loading_texts.get(prefix, "Processing")

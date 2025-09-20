@@ -6,10 +6,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def is_admin(username: str) -> bool:
+def is_admin_telegram(username: str) -> bool:
     """Check if user is admin"""
     admin_username = os.getenv("ADMIN_TELEGRAM_USERNAME")
-    return admin_username and username and username.lower() == admin_username.lower()
+    return username.lower() == admin_username.lower()
+
+
+def is_admin_github(username: str) -> bool:
+    """Check if user is admin"""
+    admin_username = os.getenv("ADMIN_GITHUB_USERNAME")
+    return username.lower() == admin_username.lower()
 
 def get_logs(page=0, per_page=5):
     """Get logs from database with pagination"""
@@ -79,7 +85,7 @@ async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle logs command - admin only"""
     user = update.effective_user
     
-    if not user.username or not is_admin(user.username):
+    if not user.username or not is_admin_telegram(user.username):
         await update.message.reply_text("❌ Access denied. Admin only.")
         return
     

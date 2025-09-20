@@ -157,30 +157,85 @@ active_loadings = {}
 loading_in_progress = set()  # Track which messages have loading in progress
 
 def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1.0):
-    """Loading decorator that prevents multiple loading animations"""
+    """Loading decorator that works for both functions and bound methods"""
     def decorator(func):
         @functools.wraps(func)
-        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        async def wrapper(*call_args, **kwargs):
+            # Normalize arguments for functions vs bound methods
+            self_obj = None
+            update = None
+            context = None
+            extra_args = []
+
+            # Helpers to identify types without importing telegram classes here
+            def is_update(obj):
+                return obj is not None and (hasattr(obj, 'callback_query') or hasattr(obj, 'message'))
+
+            def is_message(obj):
+                return obj is not None and hasattr(obj, 'message_id') and hasattr(obj, 'chat')
+
+            def is_context(obj):
+                return obj is not None and hasattr(obj, 'user_data')
+
+            # Try to map arguments
+            if len(call_args) >= 3 and is_update(call_args[1]) and is_context(call_args[2]):
+                # Bound method with Update and Context
+                self_obj = call_args[0]
+                update = call_args[1]
+                context = call_args[2]
+                extra_args = list(call_args[3:])
+            elif len(call_args) >= 3 and is_message(call_args[1]):
+                # Bound method with Message passed instead of Update
+                self_obj = call_args[0]
+                message_arg = call_args[1]
+                # Find context among the rest
+                ctx_idx = None
+                for idx in range(2, len(call_args)):
+                    if is_context(call_args[idx]):
+                        context = call_args[idx]
+                        ctx_idx = idx
+                        break
+                # If no context, just run function as-is
+                if context is None:
+                    return await func(*call_args, **kwargs)
+                extra_args = list(call_args[2:ctx_idx]) + list(call_args[ctx_idx+1:])
+                update = None
+            elif len(call_args) >= 2 and is_update(call_args[0]) and is_context(call_args[1]):
+                # Function with Update and Context
+                update = call_args[0]
+                context = call_args[1]
+                extra_args = list(call_args[2:])
+            elif len(call_args) >= 2 and is_message(call_args[0]) and is_context(call_args[1]):
+                # Function with Message and Context
+                update = None
+                context = call_args[1]
+                extra_args = list(call_args[2:])
+            else:
+                # Unknown pattern - run without loading
+                return await func(*call_args, **kwargs)
+
             message = None
             animation_task = None
             message_id = None
-            
+
             try:
-                # Get message
-                if update.callback_query:
+                # Get message if update is a proper Update-like object
+                if update is not None and hasattr(update, 'callback_query') and update.callback_query:
                     await update.callback_query.answer()
                     message = update.callback_query.message
                     message_id = message.message_id
-                    
-                    # Check if loading already in progress for this message
+
                     if message_id in loading_in_progress:
                         # Just run the function without new loading animation
-                        return await func(update, context, *args, **kwargs)
-                    
+                        if self_obj is not None:
+                            return await func(self_obj, update, context, *extra_args, **kwargs)
+                        else:
+                            return await func(update, context, *extra_args, **kwargs)
+
                     loading_in_progress.add(message_id)
                     append_loading = True
-                    
-                elif update.message:
+
+                elif update is not None and hasattr(update, 'message') and update.message:
                     # For new messages, create with animation
                     styles = animator.get_random_styles()
                     first_frame = []
@@ -192,13 +247,32 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
                     message_id = message.message_id
                     loading_in_progress.add(message_id)
                     append_loading = False
-                
-                if not message:
-                    return await func(update, context, *args, **kwargs)
-                
+
+                # If a Message object was passed directly (bound or function form)
+                if message is None:
+                    # Detect message in arguments again
+                    msg_obj = None
+                    if len(call_args) >= 1 and is_message(call_args[0]):
+                        msg_obj = call_args[0]
+                    if len(call_args) >= 2 and is_message(call_args[1]):
+                        msg_obj = call_args[1]
+
+                    if msg_obj is not None:
+                        message = msg_obj
+                        message_id = message.message_id
+                        loading_in_progress.add(message_id)
+                        append_loading = True
+
+                # If we still don't have message or context, just run the function
+                if not message or context is None:
+                    if self_obj is not None:
+                        return await func(self_obj, update, context, *extra_args, **kwargs)
+                    else:
+                        return await func(update, context, *extra_args, **kwargs)
+
                 # Store in context
                 context.user_data['_loading_message'] = message
-                
+
                 # Cancel any existing animation
                 if message_id in active_loadings:
                     old_task = active_loadings[message_id]
@@ -209,9 +283,8 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
                         except asyncio.CancelledError:
                             pass
                     del active_loadings[message_id]
-                
+
                 # Start animation
-                                # Start animation
                 animation_task = asyncio.create_task(
                     animator.animate_multiple(
                         message=message,
@@ -221,16 +294,16 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
                     )
                 )
                 active_loadings[message_id] = animation_task
-                
+
                 # Wait for the specified duration
                 await asyncio.sleep(duration)
-                
+
                 # Stop animation
                 animator.stop(message_id)
-                
+
                 # Wait for animation to stop
                 await asyncio.sleep(0.2)
-                
+
                 # Cancel task if still running
                 if animation_task and not animation_task.done():
                     animation_task.cancel()
@@ -238,17 +311,20 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
                         await animation_task
                     except asyncio.CancelledError:
                         pass
-                
+
                 # Clean up from active loadings
                 if message_id in active_loadings:
                     del active_loadings[message_id]
-                
+
                 # Now run the actual function
-                result = await func(update, context, *args, **kwargs)
-                
+                if self_obj is not None:
+                    result = await func(self_obj, update, context, *extra_args, **kwargs)
+                else:
+                    result = await func(update, context, *extra_args, **kwargs)
+
                 return result
-                
-            except Exception as e:
+
+            except Exception:
                 # Cleanup on error
                 if message:
                     animator.stop(message.message_id)
@@ -261,14 +337,14 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
                     except asyncio.CancelledError:
                         pass
                 raise
-                
+
             finally:
                 # Cleanup
                 if message_id and message_id in loading_in_progress:
                     loading_in_progress.remove(message_id)
-                if '_loading_message' in context.user_data:
+                if context and '_loading_message' in context.user_data:
                     del context.user_data['_loading_message']
-        
+
         return wrapper
     
     # Allow using decorator without parentheses

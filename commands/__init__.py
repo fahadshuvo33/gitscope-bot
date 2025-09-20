@@ -3,7 +3,6 @@ from .help import help_command
 from .trending import trending_command
 from .developer import developer_command
 from .about import about_command
-from .profile import handle_profile
 from .repo import handle_repository
 
 # Export all commands
@@ -13,6 +12,5 @@ __all__ = [
     'trending_command',
     'developer_command',
     "about_command",
-    "handle_profile",
     "handle_repository"
 ]

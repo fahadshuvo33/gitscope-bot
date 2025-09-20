@@ -17,14 +17,13 @@ import os
 # Load environment
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_TELEGRAM_USERNAME = os.getenv("ADMIN_TELEGRAM_USERNAME", "").lower()
-
 # Import utils - FIX: Import the actual utils instance
 from utils.manager import utils
 from utils.db_logger import log_activity
 from utils.input_parser import InputParser
-from commands import about_command,start_command,developer_command,help_command,trending_command,handle_profile,handle_repository
-from admin import logs_command, handle_logs_callback, is_admin
+from commands import about_command,start_command,developer_command,help_command,trending_command,handle_repository
+from admin import logs_command, handle_logs_callback, is_admin_github,is_admin_telegram
+from profile import profile_handler
 # Import templates
 from templates import (
     get_invalid_input_message,
@@ -59,7 +58,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = user.username or f"user_{user.id}"
         
         # FIX: Pass user.username instead of user object
-        user_is_admin = is_admin(user.username) if user.username else False
+        is_telegram_admin = is_admin_telegram(user_id) if user_id else False
         
         logger.info(f"Text received from {user_id}: {text}")
         
@@ -82,10 +81,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         elif parsed['type'] == 'profile':
-            await handle_profile(update, parsed['username'], user_is_admin)
-        
+            is_github_admin = is_admin_github(parsed['username']) if parsed['username'] else False
+            await profile_handler.show_profile(update, context, parsed['username'], is_github_admin)
+
         elif parsed['type'] == 'repository':
-            await handle_repository(update,parsed['repo_owner'],parsed['repo_name'],user_is_admin)
+            is_github_admin = is_admin_github(parsed['repo_owner']) if parsed['repo_owner'] else False
+            await handle_repository(update,parsed['repo_owner'],parsed['repo_name'],is_github_admin)
                 
         elif parsed['type'] == 'invalid':
             # Create a keyboard with a help button
@@ -140,7 +141,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await developer_command(update, context)
         elif data == "trending_menu":
             await trending_command(update, context)
-        elif data == "show_logs" and is_admin(query.from_user.username if query.from_user.username else None):
+        elif data == "show_logs" and is_admin_telegram(query.from_user.username if query.from_user.username else None):
             await logs_command(update, context)
         elif not data.startswith("trend_"):
             await query.message.edit_text("🚧 Feature coming soon!", parse_mode="Markdown")

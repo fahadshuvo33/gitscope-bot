@@ -5,7 +5,7 @@ import logging
 import os
 
 from templates import get_welcome_message, get_error_message
-from admin import is_admin
+from admin import is_admin_telegram
 from utils.db_logger import log_activity
 from utils.loading import with_loading
 
@@ -34,7 +34,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     
     # Add logs button for admin
-    if user.username and is_admin(user.username):
+    if user.username and is_admin_telegram(user.username):
         buttons.append([InlineKeyboardButton("📋 Logs", callback_data="show_logs")])
     
     keyboard = InlineKeyboardMarkup(buttons)

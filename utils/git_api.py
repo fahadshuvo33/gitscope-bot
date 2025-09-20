@@ -190,6 +190,22 @@ async def _make_request_with_retry(
     # If we get here, all retries failed
     raise NetworkError(f"Failed to connect to GitHub API after {max_retries} attempts")
 
+# Add this function to your git_api.py
+# Add this to your utils/git_api.py file
+async def make_github_request(session: aiohttp.ClientSession, url: str, params: Optional[Dict] = None) -> Optional[Dict]:
+    """Make GitHub API request using full URL (compatibility function)"""
+    # Extract path from full URL
+    if url.startswith(GITHUB_API_BASE):
+        path = url[len(GITHUB_API_BASE):]
+    else:
+        path = url
+    
+    try:
+        return await _make_request_with_retry(session, path, params=params)
+    except (NotFoundError, NetworkError, GitHubAPIError) as e:
+        logger.error(f"Failed to make request to {url}: {e}")
+        return None
+        
 # Enhanced session factory
 def create_github_session() -> aiohttp.ClientSession:
     """Create aiohttp session with optimized settings"""
