@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 import logging
 from templates import get_repo_message, get_error_message
 from utils.manager import utils
-from utils.db_logger import log_activity
+from admin.activity import log_activity
 from utils.loading import with_loading
 
 logger = logging.getLogger(__name__)

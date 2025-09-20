@@ -146,21 +146,8 @@ class ProfileFormatter:
     def get_avatar_keyboard(self, username: str) -> InlineKeyboardMarkup:
         """Get avatar navigation keyboard"""
         return InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🏠 Back to Profile", callback_data="back_to_profile"),
-                InlineKeyboardButton("🔄 Refresh Avatar", callback_data=f"refresh_avatar_{username}")
-            ],
-            [
-                InlineKeyboardButton("📂 Repositories", callback_data=f"user_repos_{username}"),
-                InlineKeyboardButton("⭐ Starred", callback_data=f"user_starred_{username}")
-            ],
-            [
-                InlineKeyboardButton("👥 Followers", callback_data=f"user_followers_{username}"),
-                InlineKeyboardButton("👤 Following", callback_data=f"user_following_{username}")
-            ],
-            [
-                InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")
-            ]
+            [InlineKeyboardButton("🏠 Back to Profile", callback_data="back_to_profile")],
+            [InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")]
         ])
 
 

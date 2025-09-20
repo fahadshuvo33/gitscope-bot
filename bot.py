@@ -19,10 +19,11 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 # Import utils - FIX: Import the actual utils instance
 from utils.manager import utils
-from utils.db_logger import log_activity
+from admin.activity import log_activity
 from utils.input_parser import InputParser
 from commands import about_command,start_command,developer_command,help_command,trending_command,handle_repository
-from admin import logs_command, handle_logs_callback, is_admin_github,is_admin_telegram
+from admin import is_admin_github, is_admin_telegram
+from admin.handlers import report_command, handle_admin_callbacks
 from profile import profile_handler
 # Import templates
 from templates import (
@@ -50,6 +51,13 @@ def setup_logging():
 
 logger = setup_logging()
 
+async def profile_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Route profile-related callback queries to ProfileHandler with action string."""
+    if not update.callback_query:
+        return
+    data = update.callback_query.data
+    await profile_handler.handle_profile_callback(update, context, data)
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages - parse GitHub profiles and repositories"""
     try:
@@ -76,8 +84,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await developer_command(update, context)
             elif command == 'about':
                 await about_command(update, context)
-            elif command == 'logs':
-                await logs_command(update, context)
+            elif command == 'report':
+                await report_command(update, context)
             return
         
         elif parsed['type'] == 'profile':
@@ -131,7 +139,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer()
         
         # Route to different handlers based on callback data
-        if data == "start":
+        if data == "start" or data == "back_to_start":
             await start_command(update, context)
         elif data == "help_menu":
             await help_command(update, context)
@@ -141,11 +149,11 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await developer_command(update, context)
         elif data == "trending_menu":
             await trending_command(update, context)
-        elif data == "show_logs" and is_admin_telegram(query.from_user.username if query.from_user.username else None):
-            await logs_command(update, context)
-        elif not data.startswith("trend_"):
-            await query.message.edit_text("🚧 Feature coming soon!", parse_mode="Markdown")
+        elif data in ("show_logs", "show_reports") or data.startswith("logs_page_") or data.startswith("reports_"):
+            # Delegate to admin handlers (they will enforce admin checks)
+            await handle_admin_callbacks(update, context)
         else:
+            # Fallback: show coming soon for unknown callbacks not matched by specific handlers
             await query.message.edit_text("🚧 Feature coming soon!", parse_mode="Markdown")
             
     except Exception as e:
@@ -166,8 +174,6 @@ def main():
         logger.error("BOT_TOKEN not found in environment variables")
         return
     
-    logger.info(f"Starting GitScope Bot with token: {BOT_TOKEN[:10]}...")
-    
     try:
         application = Application.builder().token(BOT_TOKEN).build()
         
@@ -177,10 +183,27 @@ def main():
         application.add_handler(CommandHandler("trending", trending_command))
         application.add_handler(CommandHandler("developer", developer_command))
         application.add_handler(CommandHandler("about", about_command))
-        application.add_handler(CommandHandler("logs", logs_command))
+        application.add_handler(CommandHandler("report", report_command))
         
-        # Callback query handler
+        # Callback query handlers (register specific patterns BEFORE the generic fallback)
         register_trending_handlers(application)
+
+        # Admin callbacks (logs, reports). Use a single handler and let it route internally
+        application.add_handler(CallbackQueryHandler(handle_admin_callbacks, pattern=r"^(show_logs|logs_page_\d+|show_reports|reports_page_\d+)$"))
+
+        # Profile actions (show avatar, repos, starred, followers, following, stats, refresh, back)
+        application.add_handler(CallbackQueryHandler(
+            profile_callback_router,
+            pattern=r"^(user_repos_|user_starred_|user_followers_|user_following_|user_stats_|show_avatar_|refresh_user_|refresh_avatar_|back_to_profile)"
+        ))
+
+        # Profile pagination like: user_repos_<username>_page_<n>
+        application.add_handler(CallbackQueryHandler(
+            profile_callback_router,
+            pattern=r"^.*_page_\d+$"
+        ))
+
+        # Generic fallback callback handler
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         
         # Text message handler
@@ -190,15 +213,12 @@ def main():
         application.add_error_handler(error_handler)
         
         logger.info("Bot handlers registered successfully")
-        logger.info("Starting polling...")
         
         # Run the bot
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         # application.run_polling(drop_pending_updates=True)
         # application.run_polling()
 
-        logger.info("Bot is running...")
-        
     except Exception as e:
         logger.error(f"Failed to start bot: {e}", exc_info=True)
 

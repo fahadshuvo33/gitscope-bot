@@ -137,34 +137,11 @@ class AvatarHandler:
 
     def _get_avatar_keyboard(self, username, is_admin=False):
         """Get avatar navigation keyboard with admin support"""
-        buttons = [
-            [
-                InlineKeyboardButton("🏠 Back to Profile", callback_data="back_to_profile"),
-                InlineKeyboardButton("🔄 Refresh Avatar", callback_data=f"refresh_avatar_{username}")
-            ],
-            [
-                InlineKeyboardButton("📂 Repositories", callback_data=f"user_repos_{username}"),
-                InlineKeyboardButton("⭐ Starred", callback_data=f"user_starred_{username}")
-            ],
-            [
-                InlineKeyboardButton("👥 Followers", callback_data=f"user_followers_{username}"),
-                InlineKeyboardButton("👤 Following", callback_data=f"user_following_{username}")
-            ]
-        ]
-        
-        # Add admin-specific buttons if admin profile
-        if is_admin:
-            buttons.append([
-                InlineKeyboardButton("📊 Admin Stats", callback_data=f"admin_stats_{username}"),
-                InlineKeyboardButton("💾 Export Avatar", callback_data=f"admin_export_avatar_{username}")
-            ])
-        
-        # Add back button
-        buttons.append([
-            InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")
+        # Only two navigation buttons as requested
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏠 Back to Profile", callback_data="back_to_profile")],
+            [InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")]
         ])
-        
-        return InlineKeyboardMarkup(buttons)
 
     def _get_simple_back_keyboard(self):
         """Get simple back keyboard for errors"""
@@ -231,19 +208,36 @@ class AvatarHandler:
             f"💡 **Tip:** Try refreshing or go back to profile!"
         )
         
+        # Provide Retry (refresh) along with back options
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔄 Try Again", callback_data=f"refresh_avatar_{username}"),
+                InlineKeyboardButton("🏠 Back to Profile", callback_data="back_to_profile")
+            ],
+            [InlineKeyboardButton("⬅️ Back to Start", callback_data="back_to_start")]
+        ])
+
         try:
-            await message.edit_text(
-                error_text,
+            # If the previous message was a photo, edit caption first
+            await message.edit_caption(
+                caption=error_text,
                 parse_mode="Markdown",
-                reply_markup=self._get_simple_back_keyboard(),
-                disable_web_page_preview=True
+                reply_markup=keyboard
             )
         except Exception:
-            await message.reply_text(
-                error_text,
-                parse_mode="Markdown",
-                reply_markup=self._get_simple_back_keyboard()
-            )
+            try:
+                await message.edit_text(
+                    error_text,
+                    parse_mode="Markdown",
+                    reply_markup=keyboard,
+                    disable_web_page_preview=True
+                )
+            except Exception:
+                await message.reply_text(
+                    error_text,
+                    parse_mode="Markdown",
+                    reply_markup=keyboard
+                )
 
     async def _show_refresh_error(self, message, username, is_admin=False):
         """Show avatar refresh error"""

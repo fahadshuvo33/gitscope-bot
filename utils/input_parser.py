@@ -14,14 +14,22 @@ class InputParser:
             return {'type': 'invalid', 'message': get_invalid_input_message()}
             
         text = text.strip()
-        valid_commands = ['start', 'help', 'trending', 'developer', 'about']
+        valid_commands = ['start', 'help', 'trending', 'developer', 'about','report']
         
         # Check if it's a command
         if text.startswith('/'):
             command = text[1:].split('@')[0].lower()  # Remove bot mention if present
             if command in valid_commands:
+                # For report command, check if it has arguments
+                if command == 'report':
+                    has_args = len(parts) > 1 and parts[1].strip()
+                    return {
+                        'type': 'command',
+                        'command': command,
+                        'has_args': has_args
+                    }
                 return {'type': 'command', 'command': command}
-            else :
+            else:
                 return {'type': 'invalid', 'message': get_invalid_command_message()}
         
         # GitHub URL patterns

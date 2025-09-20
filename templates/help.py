@@ -8,6 +8,7 @@ def get_help_message():
 • `/help` \\- Show this help
 • `/developer` \\- Developer info
 • `/about` \\- About this bot
+• `/report` \\- Submit bug/feature request
 
 💬 **Direct Input:**
 • `username` \\- View GitHub profile
@@ -34,7 +35,13 @@ def get_help_message():
 • Star and fork counts
 • Issues and pull requests
 
+🐛 **Report Issues:**
+• `/report [message]` \\- Submit feedback
+• Example: `/report Profile images not loading`
+• Help us improve the bot\\!
+
 💡 **Tips:**
 • No commands needed for profiles/repos
 • Use buttons for easy navigation
-• All searches support pagination"""
+• All searches support pagination
+• Report bugs to help us improve"""

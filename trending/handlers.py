@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler
 
 from utils.git_api import create_github_session
-from utils.db_logger import log_activity
+from admin.activity import log_activity
 from .languages import LANGUAGE_CODES, get_language, format_language_button
 from .api import fetch_trending_repos
 from .formatters import (
