@@ -97,7 +97,7 @@ class ProfileHandler:
             await self._handle_regular_action(query, context, action)
 
         except Exception as e:
-            logger.error(f"Callback error for {action}: {type(e).__name__}")
+            logger.error(f"Callback error for {action}: {type(e).__name__} - {e}", exc_info=True)
             await self._show_callback_error(query.message, action)
 
     # ==================== FETCH DATA ====================
@@ -272,7 +272,12 @@ class ProfileHandler:
                 "current_view": "avatar"
             })
 
-            await message.delete()
+            # Stop the loading animation (if any) on this message, but do not delete it
+            try:
+                from utils.loading import animator
+                animator.stop(message.message_id)
+            except Exception:
+                pass
 
             # Send avatar image
             caption = self.formatter.format_avatar_display(username, is_admin)
@@ -313,7 +318,12 @@ class ProfileHandler:
             avatar_url = user_data.get("avatar_url")
             
             if avatar_url:
-                await message.delete()
+                # Stop animation if any, do not delete the message that triggered refresh
+                try:
+                    from utils.loading import animator
+                    animator.stop(message.message_id)
+                except Exception:
+                    pass
                 
                 caption = self.formatter.format_avatar_refreshed(username, is_admin)
                 keyboard = self.formatter.get_avatar_keyboard(username)
@@ -345,6 +355,9 @@ class ProfileHandler:
             username = context.user_data.get("current_username", "Unknown")
             is_admin = context.user_data.get("is_admin_profile", False)
             
+            # Ensure view state is set to profile when returning from repo/starred/followers/following
+            context.user_data["current_view"] = "profile"
+            
             if user_data:
                 await self.display.show_user_profile(query.message, context, user_data, username, is_admin_profile=is_admin)
             else:
@@ -353,7 +366,7 @@ class ProfileHandler:
     async def _restore_profile_from_avatar(self, query, context):
         """Restore profile view from avatar"""
         @with_loading("Returning to profile", 0.8)
-        async def _restore_profile(upd: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        async def _restore_profile(msg_or_update, ctx: ContextTypes.DEFAULT_TYPE):
             try:
                 user_data = ctx.user_data.get("current_user")
                 username = ctx.user_data.get("current_username", "Unknown")
@@ -363,20 +376,8 @@ class ProfileHandler:
                     await self._show_session_lost_avatar(query.message)
                     return
 
-                await query.message.delete()
-
-                # Get loading message from decorator
-                loading_message = ctx.user_data.get('_loading_message')
-                if not loading_message:
-                    # Create new message if no loading message
-                    chat_id = ctx.user_data.get("chat_id")
-                    if chat_id:
-                        loading_text = self.formatter.format_profile_restored(username, is_admin)
-                        loading_message = await upd.bot if hasattr(upd, 'bot') else ctx.bot.send_message(
-                            chat_id=chat_id,
-                            text=loading_text,
-                            parse_mode="Markdown"
-                        )
+                # Get loading message from decorator (it will be the pre-sent text message)
+                loading_message = ctx.user_data.get('_loading_message') or msg_or_update
 
                 # Update context and show full profile
                 ctx.user_data["current_view"] = "profile"
@@ -388,8 +389,7 @@ class ProfileHandler:
                 try:
                     chat_id = ctx.user_data.get("chat_id")
                     if chat_id:
-                        bot = upd.bot if hasattr(upd, 'bot') else ctx.bot
-                        await bot.send_message(
+                        await ctx.bot.send_message(
                             chat_id=chat_id,
                             text="❌ Error restoring profile. Please search again.",
                             reply_markup=self.formatter.get_session_lost_keyboard()
@@ -397,13 +397,35 @@ class ProfileHandler:
                 except Exception:
                     pass
         
-        # Create temporary update for decorator
-        temp_update = type('TempUpdate', (), {
-            'callback_query': query, 
-            'message': None,
-            'bot': context.bot
-        })()
-        await _restore_profile(temp_update, context)
+        # Prepare a fresh text message for loading (so the decorator edits text, not a photo)
+        try:
+            # Delete the avatar photo message to clean up the UI before animation
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+
+            chat_id = context.user_data.get("chat_id") or query.message.chat_id
+            loading_text = self.formatter.format_profile_restored(
+                context.user_data.get("current_username", "Unknown"),
+                context.user_data.get("is_admin_profile", False)
+            )
+            loading_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=loading_text,
+                parse_mode="Markdown"
+            )
+
+            # Call the decorated function with the Message so the decorator animates that
+            await _restore_profile(loading_message, context)
+        except Exception:
+            # Fallback: call with original query (may still work if decorator handles it)
+            temp_update = type('TempUpdate', (), {
+                'callback_query': query,
+                'message': None,
+                'bot': context.bot
+            })()
+            await _restore_profile(temp_update, context)
 
     # ==================== ERROR DISPLAY METHODS ====================
 

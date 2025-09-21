@@ -12,19 +12,30 @@ logger = logging.getLogger(__name__)
 
 
 class ProfileRepositories:
-    def __init__(self):
-        self.REPOS_ANIMATION = "rocket"  # Rocket animation for repositories
-        self.STARRED_ANIMATION = "stars"  # Stars animation for starred repos
-
     @with_loading("Loading repositories", 1.5)
     async def show_user_repos(self, update_or_message, username, context, page=1, is_admin_profile=False):
         """Show user's public repositories with loading animation and pagination"""
         per_page = 10
+        request_key = f"repos_loading_{username}_{page}"
+        if context.user_data.get(request_key):
+            logger.debug(f"Repository request already in progress for {username} page {page}")
+            return
+        
+        # Mark request as in progress
+        context.user_data[request_key] = True
         
         # Get the loading message from context (set by decorator)
         message = context.user_data.get('_loading_message')
         if not message:
             message = update_or_message
+        # Debug: log message type
+        try:
+            logger.debug(
+                f"show_user_repos: message_type={type(message).__name__}, has_edit_text={hasattr(message, 'edit_text')}, "
+                f"username={username}, page={page}"
+            )
+        except Exception:
+            pass
 
         try:
             from utils.git_api import _make_request_with_retry
@@ -108,21 +119,23 @@ class ProfileRepositories:
                         except Exception:
                             pass
 
-                    # Add repo info
-                    repo_emoji = "🔒" if is_private else "🍴" if is_fork else "📦"
-                    base_text += f"{repo_emoji} **{_escape_markdown_v2(name)}**\n"
-                    base_text += f"   {_escape_markdown_v2(description)}\n"
+                    # Add watchers count (if available)
+                    watchers = repo.get("watchers_count", 0)
 
-                    # Stats line
-                    stats_line = f"   ⭐ {stars}"
-                    if forks > 0:
-                        stats_line += f" • 🍴 {forks}"
-                    if language != "Unknown":
-                        stats_line += f" • 💻 {_escape_markdown_v2(language)}"
-                    if updated_str:
-                        stats_line += f" • 🕒 {updated_str}"
-                    base_text += stats_line + "\n"
-                    base_text += f"   `{username}/{name}`\n\n"
+                    # Format repository with index
+                    actual_index = start_index + i - 1
+                    base_text += f"{actual_index}. `{username}/{name}`\n"
+                    
+                    # Stats line (stars, forks, watchers)
+                    base_text += f"⭐ {stars} • 🍴 {forks} • 👁️ {watchers}\n"
+                    
+                    # Description
+                    if description:
+                        base_text += f"{_escape_markdown_v2(description)}\n"
+                    
+                    # Add separator if not the last item
+                    if i < len(repos):
+                        base_text += "\n─────────────────\n"
 
                 base_text += "💡 **Tip:** Copy any repository name to explore!"
 
@@ -144,18 +157,37 @@ class ProfileRepositories:
                     logger.warning(f"Message edit failed: {type(edit_error).__name__}")
 
         except Exception as e:
-            logger.error(f"Repos error for {username}: {type(e).__name__}")
+            logger.error(f"Repos error for {username}: {type(e).__name__} - {e}", exc_info=True)
             await self._show_network_error(message, username, "repositories", page, is_admin_profile)
+        finally:
+            # Clear the loading flag
+            request_key = f"repos_loading_{username}_{page}"
+            context.user_data.pop(request_key, None)
 
     @with_loading("Loading starred repos", 1.3)
     async def show_starred_repos(self, update_or_message, username, context, page=1, is_admin_profile=False):
         """Show user's starred repositories with loading animation"""
         per_page = 10
-        
+        # Check if a starred request is already in progress
+        request_key = f"starred_loading_{username}_{page}"
+        if context.user_data.get(request_key):
+            logger.debug(f"Starred request already in progress for {username} page {page}")
+            return
+            
+        # Mark request as in progress
+        context.user_data[request_key] = True
         # Get the loading message from context (set by decorator)
         message = context.user_data.get('_loading_message')
         if not message:
             message = update_or_message
+        # Debug: log message type
+        try:
+            logger.debug(
+                f"show_starred_repos: message_type={type(message).__name__}, has_edit_text={hasattr(message, 'edit_text')}, "
+                f"username={username}, page={page}"
+            )
+        except Exception:
+            pass
 
         try:
             from utils.git_api import _make_request_with_retry
@@ -207,7 +239,7 @@ class ProfileRepositories:
                 # Add admin context if needed
                 text = add_admin_context(base_text, username) if is_admin_profile else base_text
 
-                keyboard = self._create_starred_keyboard(username, page, is_admin_profile)
+                keyboard = self._create_starred_keyboard(username, is_admin_profile)
 
                 # Update with final content
                 try:
@@ -221,8 +253,12 @@ class ProfileRepositories:
                     logger.warning(f"Message edit failed: {type(edit_error).__name__}")
 
         except Exception as e:
-            logger.error(f"Starred repos error for {username}: {type(e).__name__}")
+            logger.error(f"Starred repos error for {username}: {type(e).__name__} - {e}", exc_info=True)
             await self._show_starred_error(message, username, page, is_admin_profile)
+        finally:
+            # Clear the loading flag
+            request_key = f"starred_loading_{username}_{page}"
+            context.user_data.pop(request_key, None)
 
     # ==================== ERROR HANDLERS ====================
 

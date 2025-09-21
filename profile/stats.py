@@ -47,20 +47,27 @@ class ProfileStats:
                     session, f"/users/{username}/events/public",
                     params={"per_page": 30}, timeout=10
                 )
+                if not isinstance(events, list):
+                    events = []
+                else:
+                    events = [e for e in events if isinstance(e, dict)]
 
                 # Get additional repository stats
                 repos = await _make_request_with_retry(
                     session, f"/users/{username}/repos",
                     params={"per_page": 100, "sort": "updated"}, timeout=12
                 )
+                if not isinstance(repos, list):
+                    repos = []
+                else:
+                    repos = [r for r in repos if isinstance(r, dict)]
 
                 # Process statistics
                 stats = await self._process_user_stats(user_data, events, repos)
-                language_stats = await self._analyze_languages(repos) if repos else {}
+                language_stats = self._analyze_languages(repos) if repos else {}
 
-                # Format stats display
-                base_text = f"📊 **{_escape_markdown_v2(username)}'s GitHub Statistics**\n"
-                base_text += f"{'═' * 35}\n\n"
+                # Format stats display (no decorative line under the title)
+                base_text = f"📊 **{_escape_markdown_v2(username)}'s GitHub Statistics**\n\n"
 
                 # Add achievement badges
                 achievements = self._generate_achievements(user_data, stats, language_stats)
@@ -70,21 +77,22 @@ class ProfileStats:
                         base_text += f"• {achievement}\n"
                     base_text += "\n"
 
-                # Profile score calculation
-                profile_score = self._calculate_profile_score(user_data, stats)
-                base_text += f"🎯 **Developer Score: {profile_score}/100**\n"
-                base_text += f"{'█' * (profile_score // 10)}{'░' * (10 - profile_score // 10)}\n\n"
+                # (Developer Score removed as requested)
 
                 # Basic stats with enhanced formatting
-                base_text += "📈 **Profile Overview**\n"
-                base_text += f"┌─ 📂 **{user_data.get('public_repos', 0):,}** public repositories\n"
-                base_text += f"├─ 📄 **{user_data.get('public_gists', 0):,}** public gists\n"
-                base_text += f"├─ 👥 **{user_data.get('followers', 0):,}** followers\n"
-                base_text += f"├─ 👤 **{user_data.get('following', 0):,}** following\n"
+                # Safely coerce numeric fields
+                public_repos = int((user_data.get('public_repos', 0) or 0))
+                public_gists = int((user_data.get('public_gists', 0) or 0))
+                followers = int((user_data.get('followers', 0) or 0))
+                following = int((user_data.get('following', 0) or 0))
+
+                base_text += f"📈 **Profile Overview**\n"
+                base_text += f"┌─ 📂 **{public_repos:,}** public repositories\n"
+                base_text += f"├─ 📄 **{public_gists:,}** public gists\n"
+                base_text += f"├─ 👥 **{followers:,}** followers\n"
+                base_text += f"├─ 👤 **{following:,}** following\n"
                 
                 # Add engagement ratio
-                followers = user_data.get('followers', 0)
-                following = user_data.get('following', 0)
                 if following > 0:
                     ratio = followers / following
                     base_text += f"└─ 📊 **{ratio:.1f}** engagement ratio\n\n"
@@ -203,21 +211,35 @@ class ProfileStats:
                 # Add admin context if needed
                 text = add_admin_context(base_text, username) if is_admin_profile else base_text
 
+                # Ensure we don't exceed Telegram's ~4096 character limit
+                text = self._truncate_markdown(text, 3900)
+
                 keyboard = self._create_stats_keyboard(username, is_admin_profile)
 
                 # Update with final content
                 try:
                     await message.edit_text(
                         text,
-                        parse_mode="Markdown",
+                        parse_mode="MarkdownV2",
                         reply_markup=InlineKeyboardMarkup(keyboard),
                         disable_web_page_preview=True,
                     )
                 except Exception as edit_error:
                     logger.warning(f"Message edit failed: {type(edit_error).__name__}")
+                    # Fallback: try to send as a new message
+                    try:
+                        await message.reply_text(
+                            text,
+                            parse_mode="MarkdownV2",
+                            reply_markup=InlineKeyboardMarkup(keyboard),
+                            disable_web_page_preview=True,
+                        )
+                        return
+                    except Exception as send_error:
+                        logger.warning(f"Stats send fallback failed: {type(send_error).__name__}")
 
         except Exception as e:
-            logger.error(f"Stats error for {username}: {type(e).__name__}")
+            logger.error(f"Stats error for {username}: {type(e).__name__} - {e}", exc_info=True)
             await self._show_network_error(message, username, is_admin_profile)
 
     # ==================== ANALYSIS METHODS ====================
@@ -268,28 +290,40 @@ class ProfileStats:
 
     def _calculate_profile_score(self, user_data, stats):
         """Calculate a comprehensive profile score out of 100"""
-        score = 0
+        def safe_float(val):
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return 0.0
+
+        def safe_int(val):
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                return 0
+
+        score = 0.0
         
         # Repository contribution (30 points max)
-        repos = user_data.get('public_repos', 0)
-        score += min(30, repos * 0.5)
+        repos = safe_float(user_data.get('public_repos', 0))
+        score += min(30.0, repos * 0.5)
         
         # Social influence (25 points max)
-        followers = user_data.get('followers', 0)
-        score += min(25, followers * 0.05)
+        followers = safe_float(user_data.get('followers', 0))
+        score += min(25.0, followers * 0.05)
         
         # Recent activity (20 points max)
-        commits = stats.get('commits', 0)
-        score += min(20, commits * 2)
+        commits = safe_float(stats.get('commits', 0))
+        score += min(20.0, commits * 2.0)
         
         # Engagement (15 points max)
-        prs = stats.get('pull_requests', 0)
-        issues = stats.get('issues', 0)
-        score += min(15, (prs + issues) * 1.5)
+        prs = safe_float(stats.get('pull_requests', 0))
+        issues = safe_float(stats.get('issues', 0))
+        score += min(15.0, (prs + issues) * 1.5)
         
         # Consistency bonus (10 points max)
-        if stats.get('top_repos'):
-            score += min(10, len(stats['top_repos']) * 2)
+        top_repos = stats.get('top_repos') or []
+        score += min(10.0, float(len(top_repos)) * 2.0)
         
         return min(100, int(score))
 
@@ -330,12 +364,23 @@ class ProfileStats:
         if not repos:
             return {}
         
-        total_stars = sum(repo.get('stargazers_count', 0) for repo in repos)
-        total_forks = sum(repo.get('forks_count', 0) for repo in repos)
-        total_watchers = sum(repo.get('watchers_count', 0) for repo in repos)
+        def safe_int(val):
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                return 0
+
+        total_stars = sum(safe_int(repo.get('stargazers_count')) for repo in repos)
+        total_forks = sum(safe_int(repo.get('forks_count')) for repo in repos)
+        total_watchers = sum(safe_int(repo.get('watchers_count')) for repo in repos)
         
-        # Find most starred repository
-        most_starred = max(repos, key=lambda x: x.get('stargazers_count', 0))
+        # Find most starred repository (guard empty)
+        most_starred = None
+        if repos:
+            try:
+                most_starred = max(repos, key=lambda x: safe_int(x.get('stargazers_count')))
+            except Exception:
+                most_starred = None
         
         # Count recently active repos (updated in last 6 months)
         six_months_ago = datetime.now() - timedelta(days=180)
@@ -356,11 +401,11 @@ class ProfileStats:
             'total_forks': total_forks,
             'total_watchers': total_watchers,
             'avg_stars': total_stars / len(repos) if repos else 0,
-            'most_starred': {
+            'most_starred': ({
                 'name': most_starred.get('name', 'Unknown'),
-                                'stars': most_starred.get('stargazers_count', 0),
-                'forks': most_starred.get('forks_count', 0)
-            } if repos else None,
+                'stars': safe_int(most_starred.get('stargazers_count')),
+                'forks': safe_int(most_starred.get('forks_count'))
+            } if most_starred else None),
             'active_repos': active_repos
         }
 
@@ -732,6 +777,18 @@ class ProfileStats:
         gists = user_data.get('public_gists', 0)
         
         return f"📊 {repos} repos • 👥 {followers} followers • 📄 {gists} gists"
+
+    def _truncate_markdown(self, text: str, limit: int = 3900) -> str:
+        """Truncate long markdown text at a newline boundary and append ellipsis."""
+        try:
+            if len(text) <= limit:
+                return text
+            cutoff = text.rfind('\n', 0, limit)
+            if cutoff == -1:
+                cutoff = limit
+            return text[:cutoff] + "\n\n…"
+        except Exception:
+            return text[:limit]
 
     async def get_developer_rank(self, user_data, stats):
         """Calculate developer rank based on various metrics"""

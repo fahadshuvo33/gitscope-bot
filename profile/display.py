@@ -9,7 +9,7 @@ import aiohttp
 from utils.loading import with_loading
 from utils.formatting import (
     _escape_markdown_v2, add_admin_context, format_admin_header, 
-    format_admin_footer, format_loading_text
+    format_admin_footer, format_loading_text, escape_markdown_v2_url
 )
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class ProfileDisplay:
             try:
                 await message.edit_text(
                     profile_text,
-                    parse_mode="Markdown",
+                    parse_mode="MarkdownV2",
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     disable_web_page_preview=True,
                 )
@@ -96,7 +96,7 @@ class ProfileDisplay:
                     profile_text, keyboard = profile_content
                     await message.edit_text(
                         profile_text,
-                        parse_mode="Markdown",
+                        parse_mode="MarkdownV2",
                         reply_markup=InlineKeyboardMarkup(keyboard),
                         disable_web_page_preview=True,
                     )
@@ -198,23 +198,28 @@ class ProfileDisplay:
             if blog:
                 if not blog.startswith(("http://", "https://")):
                     blog = f"https://{blog}"
-                profile_text += f"🌐 [{_escape_markdown_v2(blog[:30])}{'...' if len(blog) > 30 else ''}]({blog})\n"
+                safe_url = escape_markdown_v2_url(blog)
+                profile_text += f"🌐 [{_escape_markdown_v2(blog[:30])}{'...' if len(blog) > 30 else ''}]({safe_url})\n"
             if twitter:
-                profile_text += f"🐦 [@{_escape_markdown_v2(twitter)}](https://twitter.com/{twitter})\n"
+                tw_url = escape_markdown_v2_url(f"https://twitter.com/{twitter}")
+                profile_text += f"🐦 [@{_escape_markdown_v2(twitter)}]({tw_url})\n"
 
             # Add social links if found
             if readme_info.get('telegram'):
-                profile_text += f"✈️ [Telegram]({readme_info['telegram']})\n"
+                tg_url = escape_markdown_v2_url(readme_info['telegram'])
+                profile_text += f"✈️ [Telegram]({tg_url})\n"
 
             if readme_info.get('cv'):
-                profile_text += f"📄 [CV/Resume]({readme_info['cv']})\n"
+                cv_url = escape_markdown_v2_url(readme_info['cv'])
+                profile_text += f"📄 [CV/Resume]({cv_url})\n"
 
             profile_text += f"📅 Joined {_escape_markdown_v2(joined)}"
             if years_on_github > 0:
                 profile_text += f" ({years_on_github} years ago)"
             profile_text += "\n"
 
-            profile_text += f"\n🔗 [View on GitHub](https://github.com/{username})"
+            gh_url = escape_markdown_v2_url(f"https://github.com/{username}")
+            profile_text += f"\n🔗 [View on GitHub]({gh_url})"
             profile_text += f"\n\n💡 **Tip:** Use the 📸 button to view the profile picture!"
 
             # Add admin context if needed (don't escape username for admin functions)
@@ -283,13 +288,16 @@ class ProfileDisplay:
                     try:
                         content = base64.b64decode(readme['content']).decode('utf-8', errors='ignore')
                         info = self._extract_social_links(content)
-                    except Exception as decode_error:
-                        logger.debug(f"README decode error for {username}: {type(decode_error).__name__}")
+                    except Exception:
+                        # Silently ignore README decode issues
+                        pass
                 else:
-                    logger.debug(f"No README found for {username}")
+                    # Silently ignore when no README is found
+                    pass
 
-        except Exception as e:
-            logger.debug(f"README fetch error for {username}: {type(e).__name__}")
+        except Exception:
+            # Silently ignore README fetch errors
+            pass
 
         return info
 
@@ -390,7 +398,7 @@ class ProfileDisplay:
         try:
             await message.edit_text(
                 error_text,
-                parse_mode="Markdown",
+                parse_mode="MarkdownV2",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 disable_web_page_preview=True,
             )

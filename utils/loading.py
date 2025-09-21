@@ -133,7 +133,15 @@ class LoadingAnimator:
                         disable_web_page_preview=True
                     )
                 except TelegramError as e:
-                    if "message is not modified" not in str(e).lower():
+                    err = str(e).lower()
+                    # Silently ignore 'not modified', and stop animation if message no longer exists
+                    if "message is not modified" in err:
+                        pass
+                    elif "message to edit not found" in err or "message can't be edited" in err or "message can't be edited" in err:
+                        # Stop animation to avoid further errors
+                        self.stop(message_id)
+                        break
+                    else:
                         print(f"Animation error: {e}")
                 
                 frame_index += 1
@@ -166,6 +174,8 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
             update = None
             context = None
             extra_args = []
+            original_mode = "unknown"  # Track how the wrapped function was originally called
+            original_message_obj = None  # Preserve original Message object when applicable
 
             # Helpers to identify types without importing telegram classes here
             def is_update(obj):
@@ -184,10 +194,12 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
                 update = call_args[1]
                 context = call_args[2]
                 extra_args = list(call_args[3:])
+                original_mode = "bound_update"
             elif len(call_args) >= 3 and is_message(call_args[1]):
                 # Bound method with Message passed instead of Update
                 self_obj = call_args[0]
                 message_arg = call_args[1]
+                original_message_obj = message_arg
                 # Find context among the rest
                 ctx_idx = None
                 for idx in range(2, len(call_args)):
@@ -200,16 +212,20 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
                     return await func(*call_args, **kwargs)
                 extra_args = list(call_args[2:ctx_idx]) + list(call_args[ctx_idx+1:])
                 update = None
+                original_mode = "bound_message"
             elif len(call_args) >= 2 and is_update(call_args[0]) and is_context(call_args[1]):
                 # Function with Update and Context
                 update = call_args[0]
                 context = call_args[1]
                 extra_args = list(call_args[2:])
+                original_mode = "func_update"
             elif len(call_args) >= 2 and is_message(call_args[0]) and is_context(call_args[1]):
                 # Function with Message and Context
                 update = None
                 context = call_args[1]
                 extra_args = list(call_args[2:])
+                original_message_obj = call_args[0]
+                original_mode = "func_message"
             else:
                 # Unknown pattern - run without loading
                 return await func(*call_args, **kwargs)
@@ -316,11 +332,9 @@ def with_loading(text: str = "𝕃𝕠𝕒𝕕𝕚𝕟𝕘", duration: float = 1
                 if message_id in active_loadings:
                     del active_loadings[message_id]
 
-                # Now run the actual function
-                if self_obj is not None:
-                    result = await func(self_obj, update, context, *extra_args, **kwargs)
-                else:
-                    result = await func(update, context, *extra_args, **kwargs)
+                # Now run the actual function with the exact original call signature
+                # This avoids any risk of argument reordering for functions that accept Message first.
+                result = await func(*call_args, **kwargs)
 
                 return result
 

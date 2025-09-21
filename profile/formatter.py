@@ -67,21 +67,15 @@ class ProfileFormatter:
     
     def format_avatar_display(self, username: str, is_admin: bool = False) -> str:
         """Format avatar display caption"""
-        content = (
-            f"👤 **{username}'s GitHub Avatar**\n\n"
-            f"📸 Profile picture displayed!\n\n"
-            f"{format_tip_text('Use buttons below to navigate!')}"
-        )
+        # Keep caption minimal as requested – only a single concise title line
+        content = f"**{username}'s GitHub Avatar**"
         
         return add_admin_context(content, username) if is_admin else content
     
     def format_avatar_refreshed(self, username: str, is_admin: bool = False) -> str:
         """Format avatar refreshed caption"""
-        content = (
-            f"👤 **{username}'s GitHub Avatar**\n\n"
-            f"📸 Avatar refreshed!\n\n"
-            f"{format_tip_text('Avatar updated successfully!')}"
-        )
+        # Keep refreshed caption minimal as well
+        content = f"**{username}'s GitHub Avatar**"
         
         return add_admin_context(content, username) if is_admin else content
     

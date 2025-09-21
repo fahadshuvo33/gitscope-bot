@@ -155,6 +155,20 @@ def format_user_link(user_data):
     else:
         return login
 
+def escape_markdown_v2_url(url: str) -> str:
+    """Escape characters in URLs that break MarkdownV2 link syntax.
+
+    Telegram MarkdownV2 allows normal URLs inside (...), but parentheses need escaping.
+    We also escape backslashes defensively.
+    """
+    if not url:
+        return ""
+    s = str(url)
+    # Escape backslash first to avoid double-escaping
+    s = s.replace("\\", "\\\\")
+    s = s.replace("(", "\\(").replace(")", "\\)")
+    return s
+
 def safe_error_message(message: str) -> str:
     """Safely format error message for Telegram"""
     if not message:
@@ -185,7 +199,7 @@ def format_admin_header(username: str) -> str:
         f"═══ 👑 **ADMIN PROFILE** 👑 ═══\n"
         f"📋 **GitHub User:** `{username}`\n"
         f"🏢 **Status:** Bot Administrator\n"
-        f"═══════════════════════════\n\n"
+        f"══════════════════════\n\n"
     )
 
 def format_admin_footer() -> str:

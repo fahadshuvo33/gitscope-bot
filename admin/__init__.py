@@ -47,7 +47,7 @@ def init_admin_db():
                 user_id TEXT NOT NULL,
                 username TEXT,
                 message TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         

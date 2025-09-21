@@ -83,7 +83,7 @@ def get_logs_keyboard(page, has_next):
     if nav_buttons:
         buttons.append(nav_buttons)
     
-    buttons.append([InlineKeyboardButton("📊 Reports", callback_data="admin_reports")])
+    buttons.append([InlineKeyboardButton("📊 View Reports", callback_data="admin_reports")])
     buttons.append([InlineKeyboardButton("🏠 Back to Start", callback_data="start")])
     
     return InlineKeyboardMarkup(buttons)
